@@ -8,6 +8,7 @@
 const { Queue, Worker } = require('bullmq');
 const config = require('./config');
 const { executeWorkflow } = require('./executor');
+const history = require('./history');
 
 // ── Redis connection options ──────────────────────────────────────────────────
 const connection = {
@@ -21,11 +22,12 @@ const workflowQueue = new Queue(config.queueName, { connection });
 
 /**
  * Add a workflow job to the queue.
+ * @param {string} reqId - The request ID for tracking
  * @param {object} payload - The full validated JSON payload
  * @returns {Promise<object>} - { jobId }
  */
-async function addJob(payload) {
-  const job = await workflowQueue.add('execute-workflow', payload, {
+async function addJob(reqId, payload) {
+  const job = await workflowQueue.add('execute-workflow', { reqId, payload }, {
     attempts: 1,            // No auto-retry for browser workflows
     removeOnComplete: 100,  // Keep last 100 completed jobs
     removeOnFail: 200,      // Keep last 200 failed jobs
@@ -42,13 +44,18 @@ function startWorker() {
   const worker = new Worker(
     config.queueName,
     async (job) => {
-      const payload = job.data;
+      const { reqId, payload } = job.data;
       const webhookUrl = payload.webhook_url;
+      const startTime = Date.now();
 
-      console.log(`[Worker] Processing job ${job.id}...`);
+      console.log(`[Worker] Processing job ${job.id} (Req: ${reqId})...`);
 
       // Execute the workflow
       const result = await executeWorkflow(payload);
+      
+      // Record result in history
+      const duration = Date.now() - startTime;
+      await history.completeRequest(reqId, result, duration);
 
       // Deliver result to webhook
       if (webhookUrl) {
@@ -58,6 +65,7 @@ function startWorker() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               jobId: job.id,
+              reqId,
               ...result,
             }),
             signal: AbortSignal.timeout(config.webhookTimeout),
@@ -91,6 +99,10 @@ function startWorker() {
 
   worker.on('failed', (job, err) => {
     console.error(`[Worker] Job ${job?.id} failed: ${err.message}`);
+    // If the job failed at the BullMQ level before completing execution
+    if (job?.data?.reqId) {
+      history.completeRequest(job.data.reqId, { success: false, error: err.message }, 0).catch(() => {});
+    }
   });
 
   worker.on('error', (err) => {

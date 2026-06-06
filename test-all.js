@@ -8,41 +8,67 @@ const payload = {
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
   },
   workflow: [
-    // 1. Navigation & Evaluation
+    // 1. Variables & Template Interpolation
     { action: "goto", value: "https://the-internet.herokuapp.com/" },
-    { action: "eval", value: "return document.title" },
+    { action: "var-set", name: "pageHeading", selector: "h1", value: "return el.textContent" },
+    { action: "var-get", name: "pageHeading" },
     
-    // 2. Checkboxes
+    // 2. Control Flow: Conditionals (if/else)
+    { 
+      action: "if", 
+      condition: "var-equals", 
+      name: "pageHeading", 
+      value: "Welcome to the-internet",
+      workflow: [
+        { action: "eval", value: "console.log('Heading matches!')" }
+      ],
+      else: [
+        { action: "eval", value: "console.log('Heading does NOT match!')" }
+      ]
+    },
+
+    // 3. Control Flow: Loops (count-based)
+    {
+      action: "loop",
+      count: 2,
+      workflow: [
+        // Use {{_index}} built-in loop variable
+        { action: "var-set", name: "loopCounter", value: "return {{_index}}" },
+        { action: "var-get", name: "loopCounter" }
+      ]
+    },
+
+    // 4. Standard Actions (Checkboxes)
     { action: "goto", value: "https://the-internet.herokuapp.com/checkboxes" },
     { action: "wait-for", selector: "#checkboxes" },
     { action: "check", selector: "input[type='checkbox']:first-child" },
     { action: "uncheck", selector: "input[type='checkbox']:last-child" },
     
-    // 3. Dropdown
+    // 5. Dropdown
     { action: "goto", value: "https://the-internet.herokuapp.com/dropdown" },
     { action: "select", selector: "#dropdown", value: "1" },
     
-    // 4. Inputs & Keyboard
+    // 6. Inputs & Keyboard
     { action: "goto", value: "https://the-internet.herokuapp.com/inputs" },
     { action: "type", selector: "input[type='number']", value: "12345" },
     { action: "press", value: "Enter" },
     { action: "keydown", value: "Shift" },
     { action: "keyup", value: "Shift" },
     
-    // 5. Mouse Interaction
+    // 7. Mouse Interaction
     { action: "goto", value: "https://the-internet.herokuapp.com/hovers" },
     { action: "hover", selector: ".figure:first-of-type" },
     { action: "mousewheel", dx: 0, dy: 200 },
     
-    // 6. Drag and Drop
+    // 8. Drag and Drop
     { action: "goto", value: "https://the-internet.herokuapp.com/drag_and_drop" },
     { action: "drag", selector: "#column-a", value: "#column-b" },
     
-    // 7. Cookies
+    // 9. Cookies
     { action: "cookie-set", name: "test_cookie", value: "test_value" },
     { action: "cookie-get", name: "test_cookie" },
     
-    // 8. Wait & Output
+    // 10. Wait & Output
     { action: "wait", value: 1000 },
     { action: "screenshot" }
   ],
@@ -50,7 +76,7 @@ const payload = {
 
 async function testAll() {
   console.log("Sending comprehensive test request to Playwright API sync endpoint...");
-  console.log("This will test: goto, eval, wait-for, check, uncheck, select, type, press, keydown, keyup, hover, mousewheel, drag, cookie-set, cookie-get, wait, screenshot");
+  console.log("This will test: variables, loops, if/else, and all 24 browser actions.");
   
   try {
     const startTime = Date.now();
@@ -70,13 +96,17 @@ async function testAll() {
     console.log(`Success: ${result.success}`);
 
     if (result.success) {
+      console.log("\n--- Variables ---");
+      console.log(JSON.stringify(result.variables, null, 2));
+
       console.log("\n--- Action Results ---");
       result.results.forEach(r => {
         let extraInfo = "";
         if (r.data) {
            if (r.data.url) extraInfo = ` -> ${r.data.url}`;
-           else if (r.data.result) extraInfo = ` -> Result: ${JSON.stringify(r.data.result)}`;
+           else if (r.data.result !== undefined) extraInfo = ` -> Result: ${JSON.stringify(r.data.result)}`;
            else if (r.data.cookie) extraInfo = ` -> Cookie: ${JSON.stringify(r.data.cookie)}`;
+           else if (r.data.name !== undefined) extraInfo = ` -> Var[${r.data.name}] = ${r.data.value}`;
            else if (r.data.screenshot) extraInfo = ` -> [Screenshot Data: ${r.data.screenshot.length} bytes]`;
         }
         console.log(`[Step ${r.index}] ${r.action}${extraInfo}`);

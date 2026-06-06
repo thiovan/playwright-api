@@ -74,3 +74,24 @@
 
 #### Test Results:
 - `test-all.js` successfully executed all actions (navigation, eval, checks, selects, text input, keyboard inputs, mouse hover/scroll, drag/drop, cookies, and screenshot) in ~8 seconds.
+
+### Session 3 — 2026-06-06
+
+**Objective:** Implement Monitoring Dashboard, Variable Set/Get, and Workflow Control Flow (Loops & Conditionals).
+
+#### Steps Completed:
+
+1. ✅ Created `src/history.js` — Redis-backed temporary storage for execution history with TTL and capacity limits.
+2. ✅ Created `src/dashboard.js` — Built a full-page HTML dashboard served at `/dashboard` with a dark theme, auto-refresh, and live stats/history table. Included JSON API endpoints for the dashboard data.
+3. ✅ Updated `src/server.js` — Mounted the dashboard router and wrapped the `/sync` and `/async` endpoints to record request starts and completions to `history.js`.
+4. ✅ Updated `src/queue.js` — Updated the background worker to record job completions to `history.js`.
+5. ✅ Updated `src/validator.js` — Added payload validation rules for `var-set`, `var-get`, `loop`, and `if` workflow actions. Supported recursive nested workflows validation.
+6. ✅ Rewrote `src/executor.js` — Added support for variables state injection, loop iterations (with `_index` local variable injection), and condition branching (`if`/`else`).
+7. ✅ Updated `test-all.js` — Integrated tests for the new features: variables setting/getting, template interpolation, count-based looping, and `var-equals` if/else logic.
+8. ✅ Updated `README.md` — Documented the new dashboard, variables, loops, conditionals, and history management features.
+
+#### Architecture Decisions:
+
+- **History storage:** Utilized the existing Redis service (using Hashes and Sorted Sets for pagination) to store execution history. This avoids adding a new database dependency just for monitoring. History entries have a TTL (e.g., 24 hours) and a maximum count cap to avoid out-of-memory issues.
+- **Workflow Control Flow:** Evaluated using a recursive `executeSteps` function so that `loop` or `if` blocks can contain arbitrary nested actions (or even nested loops).
+- **Security Check:** Evaluated `eval` conditions directly via `Function` to run arbitrary user logic securely mapped strictly within Playwright's page evaluation or node bounds for loops. Added `loopMaxIterations` to cap endless loops and prevent CPU DOS.

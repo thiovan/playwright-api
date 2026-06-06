@@ -8,7 +8,9 @@ A Node.js web server that accepts JSON workflow payloads to execute browser auto
 
 - **JSON-Driven Workflows** — Define browser automation as a simple JSON array of actions
 - **Sync & Async Execution** — Choose between blocking responses or queue-based webhook delivery
-- **24 Workflow Actions** — Navigation, form filling, keyboard/mouse, cookies, screenshots, JS evaluation
+- **28 Workflow Actions** — Navigation, form filling, keyboard/mouse, cookies, screenshots, JS evaluation, variables, loops, and conditionals
+- **Variables & Control Flow** — Set/get state, interpolate variables, execute if/else branches, and run loops
+- **Monitoring Dashboard** — Real-time live view of queues, history, and stats via Redis
 - **Stealth Mode** — Built-in `puppeteer-extra-plugin-stealth` to bypass bot detection (Cloudflare, Datadome, etc.)
 - **Multi-Instance Concurrency** — BullMQ workers process multiple browser instances in parallel
 - **Dynamic Browser Config** — Customize viewport, user agent, proxy per request
@@ -58,6 +60,7 @@ docker-compose down
 | `POST` | `/api/v1/sync` | Synchronous workflow execution |
 | `POST` | `/api/v1/async` | Asynchronous execution via queue + webhook |
 | `GET` | `/api-docs` | Interactive Swagger UI documentation |
+| `GET` | `/dashboard` | Real-time monitoring dashboard |
 
 ---
 
@@ -125,6 +128,22 @@ docker-compose down
 | `screenshot` | `selector` (optional) | Capture screenshot as base64 |
 | `eval` | `value` (JS code), `selector` (optional) | Execute JavaScript |
 
+### Variables & State
+
+| Action | Fields | Description |
+|--------|--------|-------------|
+| `var-set` | `name`, `value`, `selector` (optional) | Save a variable (eval JS or extract from selector) |
+| `var-get` | `name` | Retrieve a saved variable |
+
+*Note: Variables can be accessed in subsequent actions using `{{varName}}` template syntax.*
+
+### Control Flow
+
+| Action | Fields | Description |
+|--------|--------|-------------|
+| `if` | `condition`, `workflow`, `else` (optional) | Conditionally execute workflow actions |
+| `loop` | `count`, `condition`, `workflow` | Loop over workflow actions |
+
 ### Keyboard
 
 | Action | Fields | Description |
@@ -161,7 +180,7 @@ The repository includes a Node.js test script to verify the functionality of the
 
 ### Comprehensive Test
 
-To test all 24 supported Playwright actions (navigation, form inputs, mouse, keyboard, drag-and-drop, cookies, and screenshots) in a single workflow:
+To test all 28 supported Playwright actions (navigation, form inputs, variables, loops, control flow, and screenshots) in a single workflow:
 
 ```bash
 node test-all.js
@@ -194,6 +213,26 @@ curl -X POST http://localhost:3000/api/v1/sync \
     { "action": "screenshot", "index": 1, "data": { "screenshot": "iVBORw0KGgo..." } }
   ]
 }
+```
+
+### Sync: Loop and Variables
+
+```bash
+curl -X POST http://localhost:3000/api/v1/sync \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workflow": [
+      {"action": "goto", "value": "https://example.com"},
+      {"action": "var-set", "name": "pageTitle", "value": "return document.title"},
+      {
+        "action": "loop",
+        "count": 2,
+        "workflow": [
+          {"action": "eval", "value": "console.log(\"Loop index: {{_index}}, Title: {{pageTitle}}\")"}
+        ]
+      }
+    ]
+  }'
 ```
 
 ### Sync: Search DuckDuckGo

@@ -3,22 +3,45 @@
  *
  * Parses a JSON workflow array and executes each action sequentially
  * using Playwright with stealth mode enabled.
+ * Supports looping, conditionals, and variables.
  */
 
-const { chromium } = require('playwright-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const config = require('./config');
+const { chromium } = require("playwright-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+const config = require("./config");
 
 // Register stealth plugin globally (once)
 chromium.use(StealthPlugin());
 
 /**
+ * Replace placeholders like {{varName}} in a string with variable values.
+ */
+function interpolate(str, vars) {
+  if (typeof str !== 'string') return str;
+  return str.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+    return vars[key] !== undefined ? vars[key] : match;
+  });
+}
+
+/**
+ * Interpolate step properties that can contain templates.
+ */
+function interpolateStep(step, vars) {
+  const newStep = { ...step };
+  if (newStep.value && typeof newStep.value === 'string') {
+    newStep.value = interpolate(newStep.value, vars);
+  }
+  if (newStep.selector && typeof newStep.selector === 'string') {
+    newStep.selector = interpolate(newStep.selector, vars);
+  }
+  return newStep;
+}
+
+/**
  * Execute a full workflow payload.
  *
  * @param {object} payload - The validated JSON payload
- * @param {object} payload.config - Browser configuration (optional)
- * @param {Array}  payload.workflow - Array of action steps
- * @returns {Promise<object>} - { success, results, error?, failedAtIndex? }
+ * @returns {Promise<object>} - { success, results, variables, error?, failedAtIndex? }
  */
 async function executeWorkflow(payload) {
   const browserConfig = payload.config || {};
@@ -28,26 +51,25 @@ async function executeWorkflow(payload) {
   let context = null;
   let page = null;
   const results = [];
+  const variables = {};
 
   try {
     // ── Launch browser with stealth ──────────────────────────────────
     const launchOptions = {
-      headless: browserConfig.headless !== false, // default true
+      headless: browserConfig.headless !== false,
     };
 
     if (browserConfig.proxy && browserConfig.proxy.server) {
       launchOptions.proxy = { server: browserConfig.proxy.server };
       if (browserConfig.proxy.username) {
         launchOptions.proxy.username = browserConfig.proxy.username;
-        launchOptions.proxy.password = browserConfig.proxy.password || '';
+        launchOptions.proxy.password = browserConfig.proxy.password || "";
       }
     }
 
     browser = await chromium.launch(launchOptions);
 
-    // ── Create isolated browser context ─────────────────────────────
     const contextOptions = {};
-
     if (browserConfig.viewport) {
       contextOptions.viewport = {
         width: browserConfig.viewport.width || 1280,
@@ -64,206 +86,296 @@ async function executeWorkflow(payload) {
     context = await browser.newContext(contextOptions);
     page = await context.newPage();
 
-    // ── Execute workflow steps sequentially ──────────────────────────
-    for (let i = 0; i < workflow.length; i++) {
-      const step = workflow[i];
-      const stepResult = await executeAction(page, context, step, i);
-      results.push(stepResult);
-
-      // If this step produced an error, stop execution
-      if (stepResult.error) {
-        return {
-          success: false,
-          results,
-          error: stepResult.error,
-          failedAtIndex: i,
-        };
-      }
+    // ── Execute workflow steps recursively ──────────────────────────
+    const execResult = await executeSteps(workflow, page, context, variables, results, 0);
+    
+    if (!execResult.success) {
+      return {
+        success: false,
+        results,
+        variables,
+        error: execResult.error,
+        failedAtIndex: execResult.failedAtIndex,
+      };
     }
 
-    return { success: true, results };
+    return { success: true, results, variables };
   } catch (err) {
     return {
       success: false,
       results,
+      variables,
       error: `Unexpected error: ${err.message}`,
       failedAtIndex: results.length,
     };
   } finally {
-    // ── Cleanup ─────────────────────────────────────────────────────
-    try {
-      if (context) await context.close();
-    } catch { /* ignore */ }
-    try {
-      if (browser) await browser.close();
-    } catch { /* ignore */ }
+    try { if (context) await context.close(); } catch { /* ignore */ }
+    try { if (browser) await browser.close(); } catch { /* ignore */ }
   }
 }
 
 /**
- * Execute a single workflow action.
- *
- * @param {import('playwright').Page} page
- * @param {import('playwright').BrowserContext} context
- * @param {object} step - The action step object
- * @param {number} index - Step index for logging
- * @returns {Promise<object>} - { action, index, data?, error? }
+ * Evaluate a condition.
  */
-async function executeAction(page, context, step, index) {
+async function evaluateCondition(condition, page, step, vars) {
+  const timeout = config.actionTimeout;
+  if (condition === "selector-exists") {
+    try {
+      const el = await page.waitForSelector(step.selector, { timeout: 2000, state: 'attached' });
+      return !!el;
+    } catch {
+      return false;
+    }
+  } else if (condition === "eval") {
+    const val = interpolateStep(step, vars).value;
+    return await page.evaluate(new Function(val));
+  } else if (condition === "var-equals") {
+    const expected = interpolate(step.value, vars);
+    return vars[step.name] === expected;
+  }
+  throw new Error(`Unknown condition: ${condition}`);
+}
+
+/**
+ * Execute an array of steps.
+ */
+async function executeSteps(steps, page, context, variables, results, startIndex) {
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const globalIndex = startIndex + i;
+    
+    const stepResult = await executeAction(page, context, step, globalIndex, variables, results);
+    
+    if (stepResult && stepResult.error) {
+      return { success: false, error: stepResult.error, failedAtIndex: globalIndex };
+    }
+  }
+  return { success: true };
+}
+
+/**
+ * Execute a single workflow action.
+ */
+async function executeAction(page, context, rawStep, index, variables, results) {
+  const step = interpolateStep(rawStep, variables);
   const { action, selector, value } = step;
   const timeout = config.actionTimeout;
 
   try {
     switch (action) {
-      // ── Navigation ──────────────────────────────────────────────────
-      case 'goto': {
-        await page.goto(value, { timeout, waitUntil: 'domcontentloaded' });
-        return { action, index, data: { url: page.url() } };
+      // ── Variables ───────────────────────────────────────────────────
+      case "var-set": {
+        let val = value;
+        if (selector) {
+           val = await page.locator(selector).evaluate(new Function("el", value), { timeout });
+        } else if (value && value.startsWith('return ')) {
+           val = await page.evaluate(new Function(value));
+        }
+        variables[step.name] = val;
+        results.push({ action, index, data: { name: step.name, value: val } });
+        break;
+      }
+      
+      case "var-get": {
+        results.push({ action, index, data: { name: step.name, value: variables[step.name] } });
+        break;
       }
 
-      case 'close': {
+      // ── Control Flow ────────────────────────────────────────────────
+      case "if": {
+        const isTrue = await evaluateCondition(step.condition, page, step, variables);
+        results.push({ action, index, data: { condition: step.condition, result: isTrue } });
+        
+        const branch = isTrue ? step.workflow : step.else;
+        if (branch && branch.length > 0) {
+           const subRes = await executeSteps(branch, page, context, variables, results, index + 1);
+           if (!subRes.success) return { error: subRes.error };
+        }
+        break;
+      }
+
+      case "loop": {
+        let iterations = 0;
+        const max = config.loopMaxIterations;
+        results.push({ action, index, data: { loop: 'started' } });
+        
+        while (iterations < max) {
+          if (step.count !== undefined) {
+             if (iterations >= step.count) break;
+          } else if (step.condition) {
+             const isTrue = await evaluateCondition(step.condition, page, step, variables);
+             if (!isTrue) break;
+          } else {
+             break; // safety
+          }
+          
+          variables['_index'] = iterations;
+          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (iterations * step.workflow.length));
+          if (!subRes.success) return { error: subRes.error };
+          iterations++;
+        }
+        
+        results.push({ action: "loop-end", index, data: { iterations } });
+        break;
+      }
+
+      // ── Navigation ──────────────────────────────────────────────────
+      case "goto": {
+        await page.goto(value, { timeout, waitUntil: "domcontentloaded" });
+        results.push({ action, index, data: { url: page.url() } });
+        break;
+      }
+
+      case "close": {
         await page.close();
-        // Create a fresh page for potential subsequent steps
-        page = await context.newPage();
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
       // ── Interactions ────────────────────────────────────────────────
-      case 'click': {
+      case "click": {
         await page.locator(selector).click({ timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'dblclick': {
+      case "dblclick": {
         await page.locator(selector).dblclick({ timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'type': {
+      case "type": {
         await page.locator(selector).fill(value, { timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'select': {
+      case "select": {
         await page.locator(selector).selectOption(value, { timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'check': {
+      case "check": {
         await page.locator(selector).check({ timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'uncheck': {
+      case "uncheck": {
         await page.locator(selector).uncheck({ timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'hover': {
+      case "hover": {
         await page.locator(selector).hover({ timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'drag': {
+      case "drag": {
         const source = page.locator(selector);
         const target = page.locator(value);
         await source.dragTo(target, { timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'upload': {
+      case "upload": {
         await page.locator(selector).setInputFiles(value, { timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
       // ── Output ──────────────────────────────────────────────────────
-      case 'screenshot': {
+      case "screenshot": {
         let buffer;
         if (selector) {
           buffer = await page.locator(selector).screenshot({ timeout });
         } else {
           buffer = await page.screenshot({ fullPage: false, timeout });
         }
-        const base64 = buffer.toString('base64');
-        return { action, index, data: { screenshot: base64 } };
+        const base64 = buffer.toString("base64");
+        results.push({ action, index, data: { screenshot: base64 } });
+        break;
       }
 
-      case 'eval': {
+      case "eval": {
         let result;
         if (selector) {
-          result = await page.locator(selector).evaluate(
-            new Function('el', value),
-            { timeout }
-          );
+          result = await page.locator(selector).evaluate(new Function("el", value), { timeout });
         } else {
           result = await page.evaluate(new Function(value));
         }
-        return { action, index, data: { result } };
+        results.push({ action, index, data: { result } });
+        break;
       }
 
       // ── Keyboard ────────────────────────────────────────────────────
-      case 'press': {
+      case "press": {
         await page.keyboard.press(value);
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'keydown': {
+      case "keydown": {
         await page.keyboard.down(value);
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'keyup': {
+      case "keyup": {
         await page.keyboard.up(value);
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
       // ── Mouse ───────────────────────────────────────────────────────
-      case 'mousewheel': {
+      case "mousewheel": {
         const dx = step.dx || 0;
         const dy = step.dy || 0;
         await page.mouse.wheel(dx, dy);
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
       // ── Cookies ─────────────────────────────────────────────────────
-      case 'cookie-set': {
+      case "cookie-set": {
         const url = page.url();
-        await context.addCookies([{
-          name: step.name,
-          value: step.value,
-          url: url,
-        }]);
-        return { action, index, data: null };
+        await context.addCookies([{ name: step.name, value: step.value, url }]);
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'cookie-get': {
+      case "cookie-get": {
         const cookies = await context.cookies();
-        const cookie = cookies.find(c => c.name === step.name) || null;
-        return { action, index, data: { cookie } };
+        const cookie = cookies.find((c) => c.name === step.name) || null;
+        results.push({ action, index, data: { cookie } });
+        break;
       }
 
       // ── Wait ────────────────────────────────────────────────────────
-      case 'wait': {
+      case "wait": {
         const ms = parseInt(value, 10);
         await page.waitForTimeout(ms);
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
-      case 'wait-for': {
+      case "wait-for": {
         await page.waitForSelector(selector, { timeout });
-        return { action, index, data: null };
+        results.push({ action, index, data: null });
+        break;
       }
 
       default: {
-        return { action, index, error: `Unknown action: "${action}"` };
+        return { error: `Unknown action: "${action}"` };
       }
     }
   } catch (err) {
-    return {
-      action,
-      index,
-      error: `Action "${action}" failed at step ${index}: ${err.message}`,
-    };
+    return { error: `Action "${action}" failed at step ${index}: ${err.message}` };
   }
 }
 
