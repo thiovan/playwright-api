@@ -90,6 +90,7 @@ docker-compose down
 |-------|----------|-------------|
 | `config` | No | Browser launch configuration |
 | `config.headless` | No | Run in headless mode (default: `true`) |
+| `config.noMedia` | No | Block loading of images, media, and fonts to speed up execution (default: `false`) |
 | `config.viewport` | No | Browser viewport size (default: `1280x720`) |
 | `config.userAgent` | No | Custom User-Agent string |
 | `config.proxy` | No | Proxy server configuration |

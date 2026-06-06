@@ -84,6 +84,18 @@ async function executeWorkflow(payload) {
     }
 
     context = await browser.newContext(contextOptions);
+    
+    if (browserConfig.noMedia) {
+      await context.route('**/*', (route) => {
+        const type = route.request().resourceType();
+        if (['image', 'media', 'font'].includes(type)) {
+          route.abort();
+        } else {
+          route.continue();
+        }
+      });
+    }
+    
     page = await context.newPage();
 
     // ── Execute workflow steps recursively ──────────────────────────
