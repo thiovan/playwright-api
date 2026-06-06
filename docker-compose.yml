@@ -1,0 +1,38 @@
+services:
+  # ── Redis (Message Broker) ─────────────────────────────────────────────────
+  redis:
+    image: redis:alpine
+    container_name: playwright-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Playwright API + Worker ────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: playwright-api
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CONCURRENCY=3
+      - ACTION_TIMEOUT=60000
+      - WORKFLOW_TIMEOUT=300000
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:

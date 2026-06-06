@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+AGENTS.md
+MEMORY.md
+README.md
+.env
+*.md
+!package.json

@@ -1,0 +1,466 @@
+openapi: "3.0.3"
+
+info:
+  title: Playwright API Automation Engine
+  description: |
+    A JSON workflow-driven browser automation API powered by Playwright.
+    Supports synchronous execution, asynchronous queue-based execution with webhook callbacks,
+    stealth mode for bot detection bypass, and multi-instance concurrency.
+  version: "1.0.0"
+  contact:
+    name: Playwright API
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local Docker environment
+
+tags:
+  - name: Health
+    description: Server health monitoring
+  - name: Execution
+    description: Workflow execution endpoints
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      summary: Health Check
+      description: Returns the current server status, timestamp, and uptime.
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                timestamp: "2026-06-06T08:30:00.000Z"
+                uptime: 3600.5
+
+  /api/v1/sync:
+    post:
+      tags: [Execution]
+      summary: Synchronous Workflow Execution
+      description: |
+        Executes a Playwright workflow synchronously. The HTTP connection stays open
+        until the entire workflow completes. Returns the execution results directly
+        in the response body.
+
+        **Use case:** When you need immediate results and can wait for the workflow to finish.
+      operationId: syncExecution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowPayload"
+            examples:
+              simple_screenshot:
+                summary: Screenshot a website
+                value:
+                  workflow:
+                    - action: goto
+                      value: "https://example.com"
+                    - action: screenshot
+              search_and_capture:
+                summary: Search DuckDuckGo and screenshot results
+                value:
+                  config:
+                    viewport:
+                      width: 1280
+                      height: 800
+                    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                  workflow:
+                    - action: goto
+                      value: "https://duckduckgo.com"
+                    - action: type
+                      selector: "#searchbox_input"
+                      value: ferrari
+                    - action: press
+                      value: Enter
+                    - action: wait
+                      value: 3000
+                    - action: screenshot
+              with_cookies:
+                summary: Set cookies and evaluate page
+                value:
+                  workflow:
+                    - action: goto
+                      value: "https://example.com"
+                    - action: cookie-set
+                      name: session_id
+                      value: abc123
+                    - action: cookie-get
+                      name: session_id
+                    - action: eval
+                      value: "return document.title"
+      responses:
+        "200":
+          description: Workflow executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+              example:
+                success: true
+                results:
+                  - action: goto
+                    index: 0
+                    data:
+                      url: "https://example.com/"
+                  - action: screenshot
+                    index: 1
+                    data:
+                      screenshot: "iVBORw0KGgoAAAANSUhEUgAA..."
+        "400":
+          description: Invalid payload (validation errors)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              example:
+                success: false
+                errors:
+                  - 'Field "workflow" is required and must be a non-empty array.'
+        "422":
+          description: Workflow execution failed at a specific step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionErrorResponse"
+              example:
+                success: false
+                results:
+                  - action: goto
+                    index: 0
+                    data:
+                      url: "https://example.com/"
+                error: 'Action "click" failed at step 1: locator.click: Timeout 60000ms exceeded.'
+                failedAtIndex: 1
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalErrorResponse"
+
+  /api/v1/async:
+    post:
+      tags: [Execution]
+      summary: Asynchronous Workflow Execution (Queue)
+      description: |
+        Queues a workflow for asynchronous execution via BullMQ. Returns immediately
+        with a job ID. Once the workflow completes, the results are delivered via
+        HTTP POST to the specified `webhook_url`.
+
+        **Use case:** Fire-and-forget execution when you don't need to wait for results.
+
+        **Note:** The `webhook_url` field is **required** for this endpoint.
+      operationId: asyncExecution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AsyncWorkflowPayload"
+            examples:
+              async_screenshot:
+                summary: Queue a screenshot job with webhook
+                value:
+                  webhook_url: "https://webhook.site/your-unique-id"
+                  workflow:
+                    - action: goto
+                      value: "https://example.com"
+                    - action: eval
+                      value: "return document.title"
+                    - action: screenshot
+      responses:
+        "202":
+          description: Workflow queued successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AsyncAcceptedResponse"
+              example:
+                success: true
+                message: "Workflow has been queued for execution."
+                jobId: "1"
+        "400":
+          description: Invalid payload or missing webhook_url
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              example:
+                success: false
+                errors:
+                  - 'Field "webhook_url" is required for async execution and must be a valid URL string.'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalErrorResponse"
+
+components:
+  schemas:
+    # ── Request Schemas ────────────────────────────────────────────────
+    BrowserConfig:
+      type: object
+      description: Browser launch and context configuration
+      properties:
+        headless:
+          type: boolean
+          description: Run browser in headless mode
+          default: true
+        viewport:
+          type: object
+          description: Browser viewport dimensions
+          properties:
+            width:
+              type: integer
+              description: Viewport width in pixels
+              default: 1280
+            height:
+              type: integer
+              description: Viewport height in pixels
+              default: 720
+        userAgent:
+          type: string
+          description: Custom User-Agent string
+          example: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        proxy:
+          type: object
+          description: Proxy server configuration
+          properties:
+            server:
+              type: string
+              description: Proxy server URL
+              example: "http://proxy.example.com:8000"
+            username:
+              type: string
+              description: Proxy authentication username
+            password:
+              type: string
+              description: Proxy authentication password
+
+    WorkflowAction:
+      type: object
+      description: A single workflow action step
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          description: The action to perform
+          enum:
+            - goto
+            - close
+            - click
+            - dblclick
+            - type
+            - select
+            - check
+            - uncheck
+            - hover
+            - drag
+            - upload
+            - screenshot
+            - eval
+            - press
+            - keydown
+            - keyup
+            - mousewheel
+            - cookie-set
+            - cookie-get
+            - wait
+            - wait-for
+        selector:
+          type: string
+          description: CSS selector, XPath, or Playwright locator for the target element
+          example: "#searchbox_input"
+        value:
+          description: Action-specific value (URL, text, key name, JS code, milliseconds, etc.)
+          oneOf:
+            - type: string
+            - type: integer
+          example: "https://example.com"
+        name:
+          type: string
+          description: Cookie name (for cookie-set and cookie-get actions)
+        dx:
+          type: number
+          description: Horizontal scroll delta (for mousewheel action)
+        dy:
+          type: number
+          description: Vertical scroll delta (for mousewheel action)
+
+    WorkflowPayload:
+      type: object
+      description: Synchronous execution payload
+      required:
+        - workflow
+      properties:
+        config:
+          $ref: "#/components/schemas/BrowserConfig"
+        workflow:
+          type: array
+          description: Sequential array of workflow action steps
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/WorkflowAction"
+
+    AsyncWorkflowPayload:
+      type: object
+      description: Asynchronous execution payload (requires webhook_url)
+      required:
+        - workflow
+        - webhook_url
+      properties:
+        config:
+          $ref: "#/components/schemas/BrowserConfig"
+        webhook_url:
+          type: string
+          format: uri
+          description: URL to receive execution results via POST callback
+          example: "https://webhook.site/your-unique-id"
+        workflow:
+          type: array
+          description: Sequential array of workflow action steps
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/WorkflowAction"
+
+    # ── Response Schemas ───────────────────────────────────────────────
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: number
+          description: Server uptime in seconds
+
+    StepResult:
+      type: object
+      properties:
+        action:
+          type: string
+          description: The action that was executed
+        index:
+          type: integer
+          description: Step index (0-based)
+        data:
+          type: object
+          nullable: true
+          description: Action-specific result data
+          properties:
+            url:
+              type: string
+              description: Current page URL (for goto action)
+            screenshot:
+              type: string
+              description: Base64-encoded PNG screenshot
+            result:
+              description: JavaScript evaluation result (for eval action)
+            cookie:
+              type: object
+              nullable: true
+              description: Cookie object (for cookie-get action)
+        error:
+          type: string
+          description: Error message if this step failed
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/StepResult"
+
+    ExecutionErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        results:
+          type: array
+          description: Steps completed before the failure
+          items:
+            $ref: "#/components/schemas/StepResult"
+        error:
+          type: string
+          description: Error message from the failed step
+        failedAtIndex:
+          type: integer
+          description: Index of the step that caused the failure (0-based)
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        errors:
+          type: array
+          items:
+            type: string
+          description: List of validation error messages
+
+    AsyncAcceptedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Workflow has been queued for execution."
+        jobId:
+          type: string
+          description: Unique job ID for tracking
+
+    WebhookCallbackPayload:
+      type: object
+      description: |
+        Payload sent to the webhook_url after async workflow completion.
+        Delivered as an HTTP POST with Content-Type application/json.
+      properties:
+        jobId:
+          type: string
+          description: The job ID from the async submission
+        success:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/StepResult"
+        error:
+          type: string
+          description: Error message if workflow failed
+        failedAtIndex:
+          type: integer
+          description: Index of the failed step (if any)
+
+    InternalErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Internal server error."
