@@ -155,6 +155,21 @@ docker-compose down
 
 ---
 
+## 🧪 Testing
+
+The repository includes a Node.js test script to verify the functionality of the Playwright API Engine. You can run it locally to test the API running in your Docker container.
+
+### Comprehensive Test
+
+To test all 24 supported Playwright actions (navigation, form inputs, mouse, keyboard, drag-and-drop, cookies, and screenshots) in a single workflow:
+
+```bash
+node test-all.js
+```
+*This will execute against `https://the-internet.herokuapp.com` and save the result as `test_all_features.png`.*
+
+---
+
 ## 📋 Usage Examples
 
 ### Sync: Screenshot a Website

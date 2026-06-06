@@ -1,6 +1,6 @@
 # MEMORY.md — Playwright API Automation Engine
 
-## Project Status: 🟢 Initial Build Complete
+## Project Status: 🟢 Project Complete & Fully Verified
 
 ---
 
@@ -54,7 +54,7 @@
 
 ### Session 2 — 2026-06-06
 
-**Objective:** Create README.md and OpenAPI/Swagger documentation.
+**Objective:** Create README.md, OpenAPI/Swagger documentation, and comprehensive tests.
 
 #### Steps Completed:
 
@@ -64,6 +64,13 @@
 4. ✅ Updated `Dockerfile` to copy `docs/` directory
 5. ✅ Added `swagger-ui-express` and `yaml` to `package.json` dependencies
 6. ✅ Pinned `playwright` and `playwright-extra` versions (removed carets) to prevent Docker image mismatch
+7. ✅ Created `.env.example` to document configurable variables
+8. ✅ Created `.gitignore` for standard Node.js exclusions
+9. ✅ Created `test-all.js` — a comprehensive script that tests all 24 supported Playwright actions in a single workflow.
 
 #### Bug Fix:
 - **Playwright version mismatch:** `package.json` had `^1.52.0` which resolved to `1.60.0` at install time, but Docker image only has `1.52.0` browsers. Fixed by pinning to exact `1.52.0`.
+- **Hover Selector:** Adjusted selector in `test-all.js` from `.figure:first-child` to `.figure:first-of-type` to correctly locate the element on the test site without timeouts.
+
+#### Test Results:
+- `test-all.js` successfully executed all actions (navigation, eval, checks, selects, text input, keyboard inputs, mouse hover/scroll, drag/drop, cookies, and screenshot) in ~8 seconds.
