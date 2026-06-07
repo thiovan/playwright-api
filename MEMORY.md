@@ -75,6 +75,17 @@
 #### Test Results:
 - `test-all.js` successfully executed all actions (navigation, eval, checks, selects, text input, keyboard inputs, mouse hover/scroll, drag/drop, cookies, and screenshot) in ~8 seconds.
 
+### Session 4 — 2026-06-07
+
+**Objective:** Add `loop-elements` feature.
+
+#### Steps Completed:
+
+1. ✅ Updated `src/validator.js` to include `"loop-elements": { required: ["selector", "workflow"] }`.
+2. ✅ Updated `src/executor.js` to handle `loop-elements` by locating all elements matching the selector and executing the inner workflow sequentially.
+3. ✅ Added runtime variables `{{_selector}}` and `{{_index}}` inside the loop, allowing inner workflows to easily target the specific iterated element using `nth=x` Playwright selector.
+4. ✅ Updated `README.md` to document the new `loop-elements` control flow feature.
+5. ✅ Created `test-loop.js` to verify `loop-elements` extraction behaviour.
 ### Session 3 — 2026-06-06
 
 **Objective:** Implement Monitoring Dashboard, Variable Set/Get, and Workflow Control Flow (Loops & Conditionals).

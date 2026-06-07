@@ -88,7 +88,7 @@ async function executeWorkflow(payload) {
     if (browserConfig.noMedia) {
       await context.route('**/*', (route) => {
         const type = route.request().resourceType();
-        if (['image', 'media', 'font'].includes(type)) {
+        if (['image', 'media', 'font', 'fetch'].includes(type)) {
           route.abort();
         } else {
           route.continue();
@@ -208,7 +208,7 @@ async function executeAction(page, context, rawStep, index, variables, results) 
 
       case "loop": {
         let iterations = 0;
-        const max = config.loopMaxIterations;
+        const max = config.loopMaxIterations || 1000;
         results.push({ action, index, data: { loop: 'started' } });
         
         while (iterations < max) {
@@ -228,6 +228,22 @@ async function executeAction(page, context, rawStep, index, variables, results) 
         }
         
         results.push({ action: "loop-end", index, data: { iterations } });
+        break;
+      }
+
+      case "loop-elements": {
+        const elementsCount = await page.locator(selector).count();
+        results.push({ action, index, data: { loopElements: 'started', count: elementsCount } });
+        
+        for (let i = 0; i < elementsCount; i++) {
+          variables['_index'] = i;
+          variables['_selector'] = `${selector} >> nth=${i}`;
+          
+          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (i * step.workflow.length));
+          if (!subRes.success) return { error: subRes.error };
+        }
+        
+        results.push({ action: "loop-elements-end", index, data: { elementsCount } });
         break;
       }
 
@@ -378,6 +394,23 @@ async function executeAction(page, context, rawStep, index, variables, results) 
 
       case "wait-for": {
         await page.waitForSelector(selector, { timeout });
+        results.push({ action, index, data: null });
+        break;
+      }
+
+      // ── Dialogs ─────────────────────────────────────────────────────
+      case "dialog-dismiss": {
+        page.once('dialog', async dialog => {
+          await dialog.dismiss();
+        });
+        results.push({ action, index, data: null });
+        break;
+      }
+
+      case "dialog-accept": {
+        page.once('dialog', async dialog => {
+          await dialog.accept(value || undefined);
+        });
         results.push({ action, index, data: null });
         break;
       }

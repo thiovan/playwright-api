@@ -26,11 +26,14 @@ const ACTION_SCHEMA = {
   "cookie-get": { required: ["name"] },
   wait: { required: ["value"] },
   "wait-for": { required: ["selector"] },
+  "dialog-dismiss": { required: [] },
+  "dialog-accept": { required: [] }, // value is optional for prompt input
   // ── Variables ──────────────────────────────────────────────────────────────
   "var-set": { required: ["name"] }, // value is optional (can eval from selector)
   "var-get": { required: ["name"] },
   // ── Control Flow ───────────────────────────────────────────────────────────
   loop: { required: ["workflow"] }, // count or condition required (validated separately)
+  "loop-elements": { required: ["selector", "workflow"] },
   if: { required: ["condition", "workflow"] },
 };
 

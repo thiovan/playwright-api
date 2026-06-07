@@ -8,7 +8,7 @@ A Node.js web server that accepts JSON workflow payloads to execute browser auto
 
 - **JSON-Driven Workflows** — Define browser automation as a simple JSON array of actions
 - **Sync & Async Execution** — Choose between blocking responses or queue-based webhook delivery
-- **28 Workflow Actions** — Navigation, form filling, keyboard/mouse, cookies, screenshots, JS evaluation, variables, loops, and conditionals
+- **30 Workflow Actions** — Navigation, form filling, keyboard/mouse, cookies, screenshots, JS evaluation, variables, loops, conditionals, and dialogs
 - **Variables & Control Flow** — Set/get state, interpolate variables, execute if/else branches, and run loops
 - **Monitoring Dashboard** — Real-time live view of queues, history, and stats via Redis
 - **Stealth Mode** — Built-in `puppeteer-extra-plugin-stealth` to bypass bot detection (Cloudflare, Datadome, etc.)
@@ -145,6 +145,13 @@ docker-compose down
 | `if` | `condition`, `workflow`, `else` (optional) | Conditionally execute workflow actions |
 | `loop` | `count`, `condition`, `workflow` | Loop over workflow actions |
 
+### Dialogs (Alert, Confirm, Prompt)
+
+| Action | Fields | Description |
+|--------|--------|-------------|
+| `dialog-dismiss` | — | Automatically dismiss the next dialog that appears |
+| `dialog-accept` | `value` (optional) | Automatically accept the next dialog (with optional prompt input) |
+
 ### Keyboard
 
 | Action | Fields | Description |
@@ -158,6 +165,14 @@ docker-compose down
 | Action | Fields | Description |
 |--------|--------|-------------|
 | `mousewheel` | `dx`, `dy` | Scroll the mouse wheel |
+
+### Control Flow
+
+| Action | Fields | Description |
+|--------|--------|-------------|
+| `if` | `condition`, `workflow`, `else` | Branch execution based on condition |
+| `loop` | `workflow`, `count`/`condition` | Loop execution of a sub-workflow |
+| `loop-elements`| `selector`, `workflow` | Iterate over all elements matching a selector. Sub-workflow can use `{{_selector}}` and `{{_index}}` |
 
 ### Cookies
 
@@ -216,7 +231,7 @@ curl -X POST http://localhost:3000/api/v1/sync \
 }
 ```
 
-### Sync: Loop and Variables
+### Sync: Loop and Control Flow
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/sync \
@@ -224,12 +239,22 @@ curl -X POST http://localhost:3000/api/v1/sync \
   -d '{
     "workflow": [
       {"action": "goto", "value": "https://example.com"},
-      {"action": "var-set", "name": "pageTitle", "value": "return document.title"},
+      {"action": "var-set", "name": "pageTitle", "value": "return document.title", "eval": true},
       {
         "action": "loop",
         "count": 2,
-        "workflow": [
-          {"action": "eval", "value": "console.log(\"Loop index: {{_index}}, Title: {{pageTitle}}\")"}
+        "steps": [
+          {"action": "eval", "value": "console.log(\"Loop index: {{__loop_index}}, Title: {{pageTitle}}\")"}
+        ]
+      },
+      {
+        "action": "if",
+        "eval": "return document.title.includes(\"Example\")",
+        "then": [
+          {"action": "eval", "value": "console.log(\"Title matches!\")"}
+        ],
+        "else": [
+          {"action": "eval", "value": "console.log(\"Title does not match.\")"}
         ]
       }
     ]
