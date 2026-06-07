@@ -105,4 +105,16 @@
 
 - **History storage:** Utilized the existing Redis service (using Hashes and Sorted Sets for pagination) to store execution history. This avoids adding a new database dependency just for monitoring. History entries have a TTL (e.g., 24 hours) and a maximum count cap to avoid out-of-memory issues.
 - **Workflow Control Flow:** Evaluated using a recursive `executeSteps` function so that `loop` or `if` blocks can contain arbitrary nested actions (or even nested loops).
-- **Security Check:** Evaluated `eval` conditions directly via `Function` to run arbitrary user logic securely mapped strictly within Playwright's page evaluation or node bounds for loops. Added `loopMaxIterations` to cap endless loops and prevent CPU DOS.
+### Session 5 — 2026-06-07
+
+**Objective:** Enhance element data extraction and error handling.
+
+#### Steps Completed:
+
+1. ✅ Added `get-text` action to `src/validator.js` and `src/executor.js` for clean extraction of `textContent`.
+2. ✅ Added `get-attribute` action to `src/validator.js` and `src/executor.js` to extract specific HTML attributes.
+3. ✅ Both new actions support an optional `name` field to store the extracted data into the workflow variables.
+4. ✅ Added `push: true` boolean property to `get-text`, `get-attribute`, and `var-set`. If `push: true` is included, the extracted value is appended to an array under that variable name instead of overwriting it (useful for `loop-elements`).
+5. ✅ Upgraded `interpolateStep` to recursively interpolate objects and arrays in `step.value`. This allows `var-set` to construct arbitrary JSON objects dynamically using `{{variable}}` templates directly within the object structure.
+6. ✅ Changed the JSON parse error message in `src/server.js` to English.
+7. ✅ Updated `README.md` to document the new `get-text`, `get-attribute` actions, and `push` capability.

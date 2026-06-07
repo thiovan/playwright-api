@@ -90,7 +90,8 @@ docker-compose down
 |-------|----------|-------------|
 | `config` | No | Browser launch configuration |
 | `config.headless` | No | Run in headless mode (default: `true`) |
-| `config.noMedia` | No | Block loading of images, media, and fonts to speed up execution (default: `false`) |
+| `config.noMedia` | No | Block images, media, and fonts to speed up execution (default: `false`) |
+| `config.debug` | No | If set to `false`, omits `results` and system variables (`_index`, `_selector`) from the final response to produce a cleaner JSON output. |
 | `config.viewport` | No | Browser viewport size (default: `1280x720`) |
 | `config.userAgent` | No | Custom User-Agent string |
 | `config.proxy` | No | Proxy server configuration |
@@ -126,6 +127,8 @@ docker-compose down
 
 | Action | Fields | Description |
 |--------|--------|-------------|
+| `get-text` | `selector`, `name` (optional), `push` (optional) | Extract text from element. Saves to variable if `name` is provided. If `push: true`, appends to an array. |
+| `get-attribute` | `selector`, `value` (attribute name), `name` (optional), `push` (optional) | Extract attribute from element. Saves to variable if `name` is provided. If `push: true`, appends to an array. |
 | `screenshot` | `selector` (optional) | Capture screenshot as base64 |
 | `eval` | `value` (JS code), `selector` (optional) | Execute JavaScript |
 
@@ -133,17 +136,25 @@ docker-compose down
 
 | Action | Fields | Description |
 |--------|--------|-------------|
-| `var-set` | `name`, `value`, `selector` (optional) | Save a variable (eval JS or extract from selector) |
+| `var-set` | `name`, `value`, `selector`/`push` (optional) | Save a variable. `value` can be a string, JS evaluation, or a JSON object. If `push: true`, it appends to an array. |
 | `var-get` | `name` | Retrieve a saved variable |
 
 *Note: Variables can be accessed in subsequent actions using `{{varName}}` template syntax.*
 
-### Control Flow
-
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `if` | `condition`, `workflow`, `else` (optional) | Conditionally execute workflow actions |
-| `loop` | `count`, `condition`, `workflow` | Loop over workflow actions |
+**Example: Constructing an Array of Objects**
+You can use `var-set` with `push: true` to accumulate structured data into a list, which is highly useful inside `loop-elements`:
+```json
+{
+  "action": "var-set",
+  "name": "posts",
+  "push": true,
+  "value": {
+    "title": "{{scraped_title}}",
+    "url": "{{scraped_url}}"
+  }
+}
+```
+This automatically interpolates the nested variables and pushes the resulting object into the `posts` array variable.
 
 ### Dialogs (Alert, Confirm, Prompt)
 
@@ -170,9 +181,29 @@ docker-compose down
 
 | Action | Fields | Description |
 |--------|--------|-------------|
-| `if` | `condition`, `workflow`, `else` | Branch execution based on condition |
-| `loop` | `workflow`, `count`/`condition` | Loop execution of a sub-workflow |
-| `loop-elements`| `selector`, `workflow` | Iterate over all elements matching a selector. Sub-workflow can use `{{_selector}}` and `{{_index}}` |
+| `if` | `condition`, `selector`/`name`/`value`, `workflow`, `else` (optional) | Conditionally execute workflow actions |
+| `loop` | `count`/`condition`, `workflow` | Loop over workflow actions |
+| `loop-elements`| `selector`, `workflow`, `max` (optional) | Iterate over elements matching a selector, limited by `max`. Sub-workflow can use `{{_selector}}` and `{{_index}}`. |
+
+**Supported Conditions for `if` and `loop`:**
+- `selector-exists`: Checks if an element exists in the DOM. Requires `selector` field.
+- `var-equals`: Checks if a variable equals a certain value. Requires `name` and `value` fields.
+- `eval`: Evaluates arbitrary JS logic. Requires `value` field.
+
+**Example: If Selector Exists**
+```json
+{
+  "action": "if",
+  "condition": "selector-exists",
+  "selector": ".popup-close-button",
+  "workflow": [
+    { "action": "click", "selector": ".popup-close-button" }
+  ],
+  "else": [
+    { "action": "eval", "value": "console.log('No popup found');" }
+  ]
+}
+```
 
 ### Cookies
 

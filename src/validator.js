@@ -18,6 +18,8 @@ const ACTION_SCHEMA = {
   upload: { required: ["selector", "value"] },
   screenshot: { required: [] }, // selector is optional
   eval: { required: ["value"] }, // selector is optional
+  "get-text": { required: ["selector"] }, // name is optional (variable assignment)
+  "get-attribute": { required: ["selector", "value"] }, // name is optional
   press: { required: ["value"] },
   keydown: { required: ["value"] },
   keyup: { required: ["value"] },

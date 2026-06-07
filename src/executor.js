@@ -26,10 +26,25 @@ function interpolate(str, vars) {
 /**
  * Interpolate step properties that can contain templates.
  */
+function recursivelyInterpolate(obj, vars) {
+  if (typeof obj === 'string') {
+    return interpolate(obj, vars);
+  } else if (Array.isArray(obj)) {
+    return obj.map(item => recursivelyInterpolate(item, vars));
+  } else if (obj !== null && typeof obj === 'object') {
+    const newObj = {};
+    for (const key in obj) {
+      newObj[key] = recursivelyInterpolate(obj[key], vars);
+    }
+    return newObj;
+  }
+  return obj;
+}
+
 function interpolateStep(step, vars) {
   const newStep = { ...step };
-  if (newStep.value && typeof newStep.value === 'string') {
-    newStep.value = interpolate(newStep.value, vars);
+  if (newStep.value !== undefined) {
+    newStep.value = recursivelyInterpolate(newStep.value, vars);
   }
   if (newStep.selector && typeof newStep.selector === 'string') {
     newStep.selector = interpolate(newStep.selector, vars);
@@ -101,25 +116,41 @@ async function executeWorkflow(payload) {
     // ── Execute workflow steps recursively ──────────────────────────
     const execResult = await executeSteps(workflow, page, context, variables, results, 0);
     
+    const formatRes = (success, results, vars, extra = {}) => {
+      const finalVars = { ...vars };
+      if (browserConfig.debug === false) {
+        for (const key in finalVars) {
+          if (key.startsWith('_')) delete finalVars[key];
+        }
+      }
+      const res = { success, ...extra, variables: finalVars };
+      if (browserConfig.debug !== false) res.results = results;
+      return res;
+    };
+
     if (!execResult.success) {
-      return {
-        success: false,
-        results,
-        variables,
+      return formatRes(false, results, variables, {
         error: execResult.error,
         failedAtIndex: execResult.failedAtIndex,
-      };
+      });
     }
 
-    return { success: true, results, variables };
+    return formatRes(true, results, variables);
   } catch (err) {
-    return {
+    const finalVars = { ...variables };
+    if (browserConfig.debug === false) {
+      for (const key in finalVars) {
+        if (key.startsWith('_')) delete finalVars[key];
+      }
+    }
+    const res = {
       success: false,
-      results,
-      variables,
+      variables: finalVars,
       error: `Unexpected error: ${err.message}`,
       failedAtIndex: results.length,
     };
+    if (browserConfig.debug !== false) res.results = results;
+    return res;
   } finally {
     try { if (context) await context.close(); } catch { /* ignore */ }
     try { if (browser) await browser.close(); } catch { /* ignore */ }
@@ -180,10 +211,17 @@ async function executeAction(page, context, rawStep, index, variables, results) 
         let val = value;
         if (selector) {
            val = await page.locator(selector).evaluate(new Function("el", value), { timeout });
-        } else if (value && value.startsWith('return ')) {
+        } else if (typeof value === 'string' && value.startsWith('return ')) {
            val = await page.evaluate(new Function(value));
         }
-        variables[step.name] = val;
+        if (step.push) {
+          if (!Array.isArray(variables[step.name])) {
+            variables[step.name] = variables[step.name] !== undefined ? [variables[step.name]] : [];
+          }
+          variables[step.name].push(val);
+        } else {
+          variables[step.name] = val;
+        }
         results.push({ action, index, data: { name: step.name, value: val } });
         break;
       }
@@ -233,9 +271,11 @@ async function executeAction(page, context, rawStep, index, variables, results) 
 
       case "loop-elements": {
         const elementsCount = await page.locator(selector).count();
-        results.push({ action, index, data: { loopElements: 'started', count: elementsCount } });
+        const limit = step.max !== undefined ? Math.min(elementsCount, parseInt(step.max, 10)) : elementsCount;
         
-        for (let i = 0; i < elementsCount; i++) {
+        results.push({ action, index, data: { loopElements: 'started', found: elementsCount, limit } });
+        
+        for (let i = 0; i < limit; i++) {
           variables['_index'] = i;
           variables['_selector'] = `${selector} >> nth=${i}`;
           
@@ -243,7 +283,7 @@ async function executeAction(page, context, rawStep, index, variables, results) 
           if (!subRes.success) return { error: subRes.error };
         }
         
-        results.push({ action: "loop-elements-end", index, data: { elementsCount } });
+        results.push({ action: "loop-elements-end", index, data: { iterated: limit } });
         break;
       }
 
@@ -318,6 +358,35 @@ async function executeAction(page, context, rawStep, index, variables, results) 
       }
 
       // ── Output ──────────────────────────────────────────────────────
+      case "get-text": {
+        const text = await page.locator(selector).textContent({ timeout });
+        const resultText = text ? text.trim() : null;
+        if (step.name) {
+          if (step.push) {
+            if (!Array.isArray(variables[step.name])) variables[step.name] = variables[step.name] !== undefined ? [variables[step.name]] : [];
+            variables[step.name].push(resultText);
+          } else {
+            variables[step.name] = resultText;
+          }
+        }
+        results.push({ action, index, data: { text: resultText } });
+        break;
+      }
+
+      case "get-attribute": {
+        const attr = await page.locator(selector).getAttribute(value, { timeout });
+        if (step.name) {
+          if (step.push) {
+            if (!Array.isArray(variables[step.name])) variables[step.name] = variables[step.name] !== undefined ? [variables[step.name]] : [];
+            variables[step.name].push(attr);
+          } else {
+            variables[step.name] = attr;
+          }
+        }
+        results.push({ action, index, data: { attribute: attr } });
+        break;
+      }
+
       case "screenshot": {
         let buffer;
         if (selector) {
