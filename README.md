@@ -60,7 +60,7 @@ docker-compose down
 | `POST` | `/api/v1/sync` | Synchronous workflow execution |
 | `POST` | `/api/v1/async` | Asynchronous execution via queue + webhook |
 | `GET` | `/api-docs` | Interactive Swagger UI documentation |
-| `GET` | `/dashboard` | Real-time monitoring dashboard |
+| `GET` | `/` | Real-time monitoring dashboard |
 
 ---
 
@@ -198,9 +198,22 @@ This automatically interpolates the nested variables and pushes the resulting ob
   "selector": ".popup-close-button",
   "workflow": [
     { "action": "click", "selector": ".popup-close-button" }
+  ]
+}
+```
+
+**Example: If Variable Equals**
+```json
+{
+  "action": "if",
+  "condition": "var-equals",
+  "name": "login_status",
+  "value": "success",
+  "workflow": [
+    { "action": "goto", "value": "https://example.com/dashboard" }
   ],
   "else": [
-    { "action": "eval", "value": "console.log('No popup found');" }
+    { "action": "eval", "value": "console.error('Login failed!');" }
   ]
 }
 ```
@@ -227,10 +240,10 @@ The repository includes a Node.js test script to verify the functionality of the
 
 ### Comprehensive Test
 
-To test all 28 supported Playwright actions (navigation, form inputs, variables, loops, control flow, and screenshots) in a single workflow:
+To test all 30 supported Playwright actions (navigation, form inputs, variables, loops, control flow, and screenshots) in a single workflow:
 
 ```bash
-node test-all.js
+node tests/test-all.js
 ```
 *This will execute against `https://the-internet.herokuapp.com` and save the result as `test_all_features.png`.*
 
