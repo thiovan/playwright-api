@@ -29,6 +29,9 @@ services:
       - CONCURRENCY=3
       - ACTION_TIMEOUT=60000
       - WORKFLOW_TIMEOUT=300000
+      - WEBHOOK_TIMEOUT=30000
+      - HISTORY_TTL=86400
+      - HISTORY_MAX_ITEMS=1000
     depends_on:
       redis:
         condition: service_healthy

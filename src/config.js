@@ -26,6 +26,10 @@ const config = {
 
   // Webhook
   webhookTimeout: parseInt(process.env.WEBHOOK_TIMEOUT, 10) || 30_000, // 30s for webhook delivery
+  
+  // History (Dashboard Monitoring)
+  historyTTL: parseInt(process.env.HISTORY_TTL, 10) || 86400, // 24 hours in seconds
+  historyMaxItems: parseInt(process.env.HISTORY_MAX_ITEMS, 10) || 1000, // Max records in history
 };
 
 module.exports = config;

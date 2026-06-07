@@ -372,9 +372,11 @@ curl -X POST http://localhost:3000/api/v1/async \
 | `REDIS_HOST` | `localhost` | Redis host |
 | `REDIS_PORT` | `6379` | Redis port |
 | `CONCURRENCY` | `3` | Max parallel browser instances |
-| `ACTION_TIMEOUT` | `60000` | Timeout per action (ms) |
-| `WORKFLOW_TIMEOUT` | `300000` | Timeout per workflow (ms) |
-| `WEBHOOK_TIMEOUT` | `30000` | Timeout for webhook delivery (ms) |
+| `ACTION_TIMEOUT` | `60000` | Max ms per individual Playwright action |
+| `WORKFLOW_TIMEOUT` | `300000` | Max ms for an entire workflow to complete |
+| `WEBHOOK_TIMEOUT` | `30000` | Max ms to wait when delivering webhook |
+| `HISTORY_TTL` | `86400` | Expiration time for dashboard history records (seconds) |
+| `HISTORY_MAX_ITEMS` | `1000` | Maximum number of request history items to keep |
 
 ---
 
