@@ -1,0 +1,105 @@
+{
+  "config": {
+    "headless": true,
+    "noMedia": true,
+    "debug": false
+  },
+  "workflow": [
+    {
+      "action": "goto",
+      "value": "https://www.instagram.com/"
+    },
+    {
+      "action": "cookie-set",
+      "name": "sessionid",
+      "value": "CHANGE_WITH_YOUR_SESSIONID"
+    },
+    {
+      "action": "goto",
+      "value": "https://www.instagram.com/google/"
+    },
+    {
+      "action": "if",
+      "condition": "selector-exists",
+      "selector": "main > div > div > div > div > div > div > div > div > div",
+      "workflow": [
+        {
+          "action": "loop-elements",
+          "selector": "main > div > div > div > div > div > div > div > div > div",
+          "max": 3,
+          "workflow": [
+            {
+              "action": "get-attribute",
+              "selector": "{{_selector}} >> a",
+              "value": "href",
+              "name": "url"
+            },
+            {
+              "action": "click",
+              "selector": "{{_selector}}"
+            },
+            {
+              "action": "if",
+              "condition": "selector-exists",
+              "selector": "div > li > div > button",
+              "workflow": [
+                {
+                  "action": "loop",
+                  "condition": "selector-exists",
+                  "selector": "div > li > div > button",
+                  "workflow": [
+                    {
+                      "action": "click",
+                      "selector": "div > li > div > button"
+                    },
+                    {
+                      "action": "wait",
+                      "value": 2000
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "action": "loop-elements",
+              "selector": "div > div > ul div > ul",
+              "workflow": [
+                {
+                  "action": "get-text",
+                  "selector": "{{_selector}} >> h3",
+                  "name": "username"
+                },
+                {
+                  "action": "get-text",
+                  "selector": "{{_selector}} >> h3 + div > span",
+                  "name": "comment"
+                },
+                {
+                  "action": "get-attribute",
+                  "selector": "{{_selector}} >> time",
+                  "value": "datetime",
+                  "name": "datetime"
+                },
+                {
+                  "action": "var-set",
+                  "name": "data",
+                  "push": true,
+                  "value": {
+                    "url": "{{url}}",
+                    "username": "{{username}}",
+                    "comment": "{{comment}}",
+                    "datetime": "{{datetime}}"
+                  }
+                }
+              ]
+            },
+            {
+              "action": "click",
+              "selector": "svg[aria-label='Close']"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
