@@ -16,6 +16,7 @@ A Node.js web server that accepts JSON workflow payloads to execute browser auto
 - **Dynamic Browser Config** — Customize viewport, user agent, proxy per request
 - **Docker-Ready** — One command to build and run with Docker Compose
 - **Swagger/OpenAPI Docs** — Interactive API documentation at `/api-docs`
+- **Live Browser Preview** — Built-in noVNC support for real-time visual debugging at `http://localhost:8080/vnc.html`
 
 ---
 
@@ -43,6 +44,16 @@ curl http://localhost:3000/api/v1/health
 
 The API will be available at `http://localhost:3000`.
 Swagger docs will be available at `http://localhost:3000/api-docs`.
+Live browser preview (noVNC) will be available at `http://localhost:8080/vnc.html`.
+
+### Run with Docker Image (GHCR)
+
+You can also run the pre-built image directly:
+
+```bash
+docker run -d -p 3000:3000 ghcr.io/thiovan/playwright-api:main
+```
+*(Note: Async queue features require a separate Redis instance)*
 
 ### Stop
 

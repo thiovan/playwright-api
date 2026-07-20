@@ -206,6 +206,7 @@ async function getHistory(page = 1, limit = 20) {
           stepsTotal: parseInt(data.stepsTotal) || 0,
           stepsCompleted: parseInt(data.stepsCompleted) || 0,
           webhookUrl: data.webhookUrl || null,
+          config: JSON.parse(data.config || '{}'),
         });
       }
     }

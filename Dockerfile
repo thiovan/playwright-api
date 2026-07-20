@@ -10,16 +10,25 @@ COPY package.json package-lock.json* ./
 # Install production dependencies only
 RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev
 
+# Install VNC dependencies
+RUN apt-get update && apt-get install -y xvfb x11vnc novnc websockify && rm -rf /var/lib/apt/lists/*
+
 # Copy source code and docs
 COPY src/ ./src/
 COPY docs/ ./docs/
 
-# Expose the API port
-EXPOSE 3000
+# Expose the API port and VNC port
+EXPOSE 3000 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://localhost:3000/api/v1/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+
+# Setup VNC entrypoint
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Run the application
 CMD ["node", "src/index.js"]

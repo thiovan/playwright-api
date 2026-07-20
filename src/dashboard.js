@@ -119,10 +119,11 @@ router.get('/', (req, res) => {
             <th>Duration</th>
             <th>Steps</th>
             <th>Time</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody id="history-body">
-          <tr><td colspan="6" style="text-align: center;">Loading...</td></tr>
+          <tr><td colspan="7" style="text-align: center;">Loading...</td></tr>
         </tbody>
       </table>
     </div>
@@ -179,6 +180,11 @@ router.get('/', (req, res) => {
           const dur = req.duration ? (req.duration / 1000).toFixed(1) + 's' : '-';
           const time = new Date(req.startedAt).toLocaleTimeString();
           
+          let actionBtn = '-';
+          if (req.status === 'running' && req.config && req.config.headless === false) {
+            actionBtn = \`<a href="http://\${window.location.hostname}:8080/vnc.html?autoconnect=true" target="_blank" onclick="event.stopPropagation()" class="badge running" style="text-decoration:none">View VNC</a>\`;
+          }
+          
           tr.innerHTML = \`
             <td style="font-family: monospace; font-size: 0.9em;">\${req.id}</td>
             <td><span class="badge" style="background: rgba(255,255,255,0.1)">\${req.type.toUpperCase()}</span></td>
@@ -186,6 +192,7 @@ router.get('/', (req, res) => {
             <td>\${dur}</td>
             <td>\${req.stepsCompleted} / \${req.stepsTotal}</td>
             <td style="color: var(--text-muted)">\${time}</td>
+            <td>\${actionBtn}</td>
           \`;
           tbody.appendChild(tr);
         });
