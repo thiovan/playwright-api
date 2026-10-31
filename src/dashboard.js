@@ -1,273 +1,175 @@
 /**
- * Monitoring Dashboard
- * Serves a single-page HTML dashboard and JSON API endpoints for queue and history stats.
+ * Monitoring & Management Dashboard Router
+ * Serves SPA frontend and JSON REST APIs for stats, history, API keys, templates, schedules, setup, and auth.
  */
 
+const fs = require('fs');
+const path = require('path');
+const net = require('net');
 const express = require('express');
 const { Queue } = require('bullmq');
 const config = require('./config');
 const history = require('./history');
+const apiKeyManager = require('./apiKeyManager');
+const templateManager = require('./templateManager');
+const schedulerManager = require('./schedulerManager');
+const setupManager = require('./setupManager');
+const authManager = require('./authManager');
 
 const router = express.Router();
-const workflowQueue = new Queue(config.queueName, {
-  connection: {
-    host: config.redis.host,
-    port: config.redis.port,
-    maxRetriesPerRequest: null,
-  },
-});
+let workflowQueue = null;
 
-// ── HTML Dashboard ────────────────────────────────────────────────────────────
-router.get('/', (req, res) => {
-  res.send(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Playwright API Dashboard</title>
-  <style>
-    :root {
-      --bg: #0f172a;
-      --card-bg: rgba(30, 41, 59, 0.7);
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --accent: #38bdf8;
-      --success: #10b981;
-      --error: #ef4444;
-      --border: rgba(255, 255, 255, 0.1);
-    }
-    body {
-      font-family: 'Inter', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      margin: 0;
-      padding: 2rem;
-    }
-    .container { max-width: 1200px; margin: 0 auto; }
-    h1 { margin-top: 0; display: flex; align-items: center; gap: 1rem; }
-    .live-dot {
-      width: 10px; height: 10px; background: var(--success);
-      border-radius: 50%; box-shadow: 0 0 10px var(--success);
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-    
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1.5rem;
-      margin-bottom: 2rem;
-    }
-    .card {
-      background: var(--card-bg);
-      backdrop-filter: blur(10px);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-    }
-    .card h3 { margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
-    .card .value { font-size: 2rem; font-weight: bold; color: var(--accent); margin: 0; }
-    
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border); }
-    th { color: var(--text-muted); font-weight: 500; }
-    tr:hover { background: rgba(255, 255, 255, 0.05); cursor: pointer; }
-    
-    .badge {
-      padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;
-    }
-    .badge.success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
-    .badge.failed { background: rgba(239, 68, 68, 0.2); color: var(--error); }
-    .badge.running { background: rgba(56, 189, 248, 0.2); color: var(--accent); }
-    
-    .detail-view {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8);
-      backdrop-filter: blur(5px); z-index: 50; padding: 2rem; overflow-y: auto;
-    }
-    .detail-content {
-      background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
-      max-width: 800px; margin: 0 auto; padding: 2rem; position: relative;
-    }
-    .close-btn {
-      position: absolute; top: 1rem; right: 1rem; background: none; border: none;
-      color: var(--text); font-size: 1.5rem; cursor: pointer;
-    }
-    pre { background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; overflow-x: auto; font-family: monospace; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Playwright API Dashboard <span class="live-dot" title="Live Updates Active"></span></h1>
-    
-    <div class="grid" id="stats">
-      <div class="card"><h3>Active Queue</h3><p class="value" id="stat-active">-</p></div>
-      <div class="card"><h3>Waiting Queue</h3><p class="value" id="stat-waiting">-</p></div>
-      <div class="card"><h3>Total Requests</h3><p class="value" id="stat-total">-</p></div>
-      <div class="card"><h3>Success Rate</h3><p class="value" id="stat-rate">-%</p></div>
-      <div class="card"><h3>Avg Duration</h3><p class="value" id="stat-duration">-</p></div>
-    </div>
+function getQueue() {
+  if (!workflowQueue) {
+    workflowQueue = new Queue(config.queueName, {
+      connection: {
+        host: config.redis.host,
+        port: config.redis.port,
+        password: config.redis.password,
+        tls: config.redis.tls,
+        maxRetriesPerRequest: null,
+      },
+    });
+  }
+  return workflowQueue;
+}
 
-    <div class="card">
-      <h3 style="color: var(--text); font-size: 1.2rem; margin-bottom: 1rem;">Recent Executions</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Type</th>
-            <th>Status</th>
-            <th>Duration</th>
-            <th>Steps</th>
-            <th>Time</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="history-body">
-          <tr><td colspan="7" style="text-align: center;">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+const WEB_DIST_PATH = path.resolve(__dirname, '..', 'web', 'dist');
 
-  <div id="detail" class="detail-view">
-    <div class="detail-content">
-      <button class="close-btn" onclick="closeDetail()">&times;</button>
-      <h2 id="det-id">Request Detail</h2>
-      <div class="grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 1rem;">
-        <div><strong>Status:</strong> <span id="det-status"></span></div>
-        <div><strong>Type:</strong> <span id="det-type"></span></div>
-        <div><strong>Duration:</strong> <span id="det-duration"></span></div>
-        <div><strong>Steps:</strong> <span id="det-steps"></span></div>
-      </div>
-      <div id="det-error" style="color: var(--error); margin-bottom: 1rem; display: none;"></div>
-      
-      <h3>Variables</h3>
-      <pre id="det-vars"></pre>
-      
-      <h3>Workflow Summary</h3>
-      <pre id="det-workflow"></pre>
-      
-      <h3>Results Summary</h3>
-      <pre id="det-results"></pre>
-    </div>
-  </div>
+// ── Public Auth Endpoints ─────────────────────────────────────────────────────
 
-  <script>
-    async function fetchData() {
-      try {
-        const [statsRes, histRes] = await Promise.all([
-          fetch('/api/v1/dashboard/stats'),
-          fetch('/api/v1/dashboard/history?limit=20')
-        ]);
-        
-        const stats = await statsRes.json();
-        const hist = await histRes.json();
-        
-        // Update stats
-        document.getElementById('stat-active').textContent = stats.queue.active;
-        document.getElementById('stat-waiting').textContent = stats.queue.waiting;
-        document.getElementById('stat-total').textContent = stats.history.totalRequests;
-        document.getElementById('stat-rate').textContent = stats.history.successRate + '%';
-        document.getElementById('stat-duration').textContent = (stats.history.avgDuration / 1000).toFixed(1) + 's';
-        
-        // Update table
-        const tbody = document.getElementById('history-body');
-        tbody.innerHTML = '';
-        hist.items.forEach(req => {
-          const tr = document.createElement('tr');
-          tr.onclick = () => showDetail(req.id);
-          
-          const dur = req.duration ? (req.duration / 1000).toFixed(1) + 's' : '-';
-          const time = new Date(req.startedAt).toLocaleTimeString();
-          
-          let actionBtn = '-';
-          if (req.status === 'running' && req.config && req.config.headless === false) {
-            actionBtn = \`<a href="http://\${window.location.hostname}:8080/vnc.html?autoconnect=true" target="_blank" onclick="event.stopPropagation()" class="badge running" style="text-decoration:none">View VNC</a>\`;
-          }
-          
-          tr.innerHTML = \`
-            <td style="font-family: monospace; font-size: 0.9em;">\${req.id}</td>
-            <td><span class="badge" style="background: rgba(255,255,255,0.1)">\${req.type.toUpperCase()}</span></td>
-            <td><span class="badge \${req.status}">\${req.status.toUpperCase()}</span></td>
-            <td>\${dur}</td>
-            <td>\${req.stepsCompleted} / \${req.stepsTotal}</td>
-            <td style="color: var(--text-muted)">\${time}</td>
-            <td>\${actionBtn}</td>
-          \`;
-          tbody.appendChild(tr);
-        });
-      } catch (err) {
-        console.error('Fetch error:', err);
-      }
-    }
-
-    async function showDetail(id) {
-      document.getElementById('detail').style.display = 'block';
-      document.getElementById('det-id').textContent = 'Loading...';
-      
-      try {
-        const res = await fetch('/api/v1/dashboard/history/' + id);
-        const req = await res.json();
-        
-        document.getElementById('det-id').textContent = 'Request ' + req.id;
-        document.getElementById('det-status').innerHTML = \`<span class="badge \${req.status}">\${req.status.toUpperCase()}</span>\`;
-        document.getElementById('det-type').textContent = req.type.toUpperCase();
-        document.getElementById('det-duration').textContent = req.duration ? (req.duration / 1000).toFixed(1) + 's' : '-';
-        document.getElementById('det-steps').textContent = req.stepsCompleted + ' / ' + req.stepsTotal;
-        
-        const errEl = document.getElementById('det-error');
-        if (req.error) {
-          errEl.textContent = req.error;
-          errEl.style.display = 'block';
-        } else {
-          errEl.style.display = 'none';
-        }
-        
-        document.getElementById('det-vars').textContent = JSON.stringify(req.variables, null, 2);
-        document.getElementById('det-workflow').textContent = JSON.stringify(req.workflow, null, 2);
-        document.getElementById('det-results').textContent = JSON.stringify(req.results, null, 2);
-      } catch (err) {
-        document.getElementById('det-id').textContent = 'Error loading details';
-      }
-    }
-
-    function closeDetail() {
-      document.getElementById('detail').style.display = 'none';
-    }
-
-    // Initial fetch and poll
-    fetchData();
-    setInterval(fetchData, 5000);
-  </script>
-</body>
-</html>
-  `);
-});
-
-// ── JSON APIs ─────────────────────────────────────────────────────────────────
-
-router.get('/api/v1/dashboard/stats', async (req, res) => {
+router.post('/api/v1/dashboard/auth/login', async (req, res) => {
   try {
-    const counts = await workflowQueue.getJobCounts('wait', 'active', 'completed', 'failed', 'delayed');
-    const histStats = await history.getStats();
-    
+    const { username, password } = req.body || {};
+    const user = await authManager.verifyCredentials(username, password);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid username or password.',
+      });
+    }
+
+    const session = await authManager.createSession(user.username);
     res.json({
       success: true,
-      queue: {
-        waiting: counts.wait,
-        active: counts.active,
-        completed: counts.completed,
-        failed: counts.failed,
-        delayed: counts.delayed
+      token: session.token,
+      expiresAt: session.expiresAt,
+      user: {
+        username: user.username,
+        isDefault: user.isDefault,
       },
-      history: histStats
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-router.get('/api/v1/dashboard/history', async (req, res) => {
+router.get('/api/v1/dashboard/auth/status', async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    let token = null;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7).trim();
+    }
+
+    if (!token) {
+      return res.json({ authenticated: false });
+    }
+
+    const session = await authManager.validateSession(token);
+    if (!session) {
+      return res.json({ authenticated: false });
+    }
+
+    const isDefault = await authManager.isDefaultPassword();
+    res.json({
+      authenticated: true,
+      user: {
+        username: session.username,
+        isDefault,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Dashboard Auth Middleware ─────────────────────────────────────────────────
+
+async function dashboardAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  let token = null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7).trim();
+  }
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: Dashboard session token required. Please login.',
+    });
+  }
+
+  const session = await authManager.validateSession(token);
+  if (!session) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: Dashboard session expired or invalid. Please login again.',
+    });
+  }
+
+  req.session = session;
+  next();
+}
+
+// ── Protected Auth Endpoints ──────────────────────────────────────────────────
+
+router.post('/api/v1/dashboard/auth/logout', dashboardAuth, async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader.slice(7).trim();
+    await authManager.destroySession(token);
+    res.json({ success: true, message: 'Logged out successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/api/v1/dashboard/auth/change-password', dashboardAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword, newUsername } = req.body || {};
+    const result = await authManager.changePassword(currentPassword, newPassword, newUsername);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ── Protected Metrics & Queue APIs ────────────────────────────────────────────
+
+router.get('/api/v1/dashboard/stats', dashboardAuth, async (req, res) => {
+  try {
+    const queue = getQueue();
+    const counts = await queue.getJobCounts('wait', 'active', 'completed', 'failed', 'delayed');
+    const histStats = await history.getStats();
+
+    res.json({
+      success: true,
+      queue: {
+        waiting: counts.wait || 0,
+        active: counts.active || 0,
+        completed: counts.completed || 0,
+        failed: counts.failed || 0,
+        delayed: counts.delayed || 0,
+      },
+      history: histStats,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/api/v1/dashboard/history', dashboardAuth, async (req, res) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 20;
@@ -278,7 +180,7 @@ router.get('/api/v1/dashboard/history', async (req, res) => {
   }
 });
 
-router.get('/api/v1/dashboard/history/:id', async (req, res) => {
+router.get('/api/v1/dashboard/history/:id', dashboardAuth, async (req, res) => {
   try {
     const data = await history.getRequestDetail(req.params.id);
     if (!data) return res.status(404).json({ success: false, error: 'Request not found' });
@@ -287,5 +189,253 @@ router.get('/api/v1/dashboard/history/:id', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ── Protected API Key Management ──────────────────────────────────────────────
+
+router.get('/api/v1/dashboard/keys', dashboardAuth, async (req, res) => {
+  try {
+    const keys = await apiKeyManager.listApiKeys();
+    res.json({ success: true, keys });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/api/v1/dashboard/keys', dashboardAuth, async (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    const created = await apiKeyManager.createApiKey(name, description);
+    res.status(201).json({ success: true, key: created });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.patch('/api/v1/dashboard/keys/:id', dashboardAuth, async (req, res) => {
+  try {
+    const { active } = req.body;
+    const updated = await apiKeyManager.toggleApiKey(req.params.id, active);
+    if (!updated) return res.status(404).json({ success: false, error: 'Key not found' });
+    res.json({ success: true, key: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/api/v1/dashboard/keys/:id', dashboardAuth, async (req, res) => {
+  try {
+    const ok = await apiKeyManager.deleteApiKey(req.params.id);
+    res.json({ success: ok });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Protected Template Library ────────────────────────────────────────────────
+
+router.get('/api/v1/dashboard/templates', dashboardAuth, async (req, res) => {
+  try {
+    const templates = await templateManager.listTemplates();
+    res.json({ success: true, templates });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/api/v1/dashboard/templates/:id', dashboardAuth, async (req, res) => {
+  try {
+    const tpl = await templateManager.getTemplate(req.params.id);
+    if (!tpl) return res.status(404).json({ success: false, error: 'Template not found' });
+    res.json({ success: true, template: tpl });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/api/v1/dashboard/templates', dashboardAuth, async (req, res) => {
+  try {
+    const saved = await templateManager.saveTemplate(req.body);
+    res.status(201).json({ success: true, template: saved });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/api/v1/dashboard/templates/:id', dashboardAuth, async (req, res) => {
+  try {
+    const ok = await templateManager.deleteTemplate(req.params.id);
+    res.json({ success: ok });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Protected Scheduled Run Management ────────────────────────────────────────
+
+router.get('/api/v1/dashboard/schedules', dashboardAuth, async (req, res) => {
+  try {
+    const schedules = await schedulerManager.listSchedules();
+    res.json({ success: true, schedules });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/api/v1/dashboard/schedules', dashboardAuth, async (req, res) => {
+  try {
+    const created = await schedulerManager.createSchedule(req.body);
+    res.status(201).json({ success: true, schedule: created });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.patch('/api/v1/dashboard/schedules/:id', dashboardAuth, async (req, res) => {
+  try {
+    const { active } = req.body;
+    const updated = await schedulerManager.toggleSchedule(req.params.id, active);
+    if (!updated) return res.status(404).json({ success: false, error: 'Schedule not found' });
+    res.json({ success: true, schedule: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/api/v1/dashboard/schedules/:id/run', dashboardAuth, async (req, res) => {
+  try {
+    const result = await schedulerManager.triggerScheduleNow(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/api/v1/dashboard/schedules/:id', dashboardAuth, async (req, res) => {
+  try {
+    const ok = await schedulerManager.deleteSchedule(req.params.id);
+    res.json({ success: ok });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Protected Onboarding & Quick Setup ────────────────────────────────────────
+
+router.get('/api/v1/dashboard/setup/status', dashboardAuth, async (req, res) => {
+  try {
+    const status = await setupManager.getConfigStatus();
+    res.json({ success: true, ...status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/api/v1/dashboard/setup/test-redis', dashboardAuth, async (req, res) => {
+  try {
+    const testResult = await setupManager.testRedisConnection(req.body || {});
+    res.json(testResult);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/api/v1/dashboard/setup/save', dashboardAuth, async (req, res) => {
+  try {
+    const saveResult = await setupManager.saveEnvironmentConfig(req.body || {});
+    workflowQueue = null;
+    res.json(saveResult);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Protected VNC Info ────────────────────────────────────────────────────────
+
+router.get('/api/v1/dashboard/vnc', dashboardAuth, async (req, res) => {
+  const host = config.vnc.host || req.hostname || 'localhost';
+  const port = config.vnc.port || 8080;
+
+  // Probe whether noVNC port is actively listening (e.g. Docker container vs host npm run dev)
+  const active = await new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(400);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, host === 'localhost' ? '127.0.0.1' : host);
+  });
+
+  res.json({
+    success: true,
+    active,
+    host,
+    port,
+    vncUrl: `http://${host}:${port}/vnc.html?autoconnect=true`,
+    note: active
+      ? 'noVNC remote service connected.'
+      : 'noVNC port 8080 unreachable. In local dev (npm run dev), headless=false opens a visible window on your desktop.',
+  });
+});
+
+// ── Frontend SPA Static Hosting ───────────────────────────────────────────────
+
+if (fs.existsSync(WEB_DIST_PATH)) {
+  // Serve static build from web/dist
+  router.use('/dashboard', express.static(WEB_DIST_PATH));
+  
+  // SPA fallback for /dashboard/*
+  router.get(['/dashboard', '/dashboard/*'], (req, res) => {
+    res.sendFile(path.join(WEB_DIST_PATH, 'index.html'));
+  });
+
+  // Redirect root / to /dashboard
+  router.get('/', (req, res) => {
+    res.redirect('/dashboard');
+  });
+} else {
+  // Fallback if frontend is not built yet
+  router.get(['/', '/dashboard', '/dashboard/*'], (req, res) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Playwright API Automation Engine</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #090d16; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+          .card { background: #131b2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 2rem; max-width: 500px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+          h2 { margin-top: 0; color: #38bdf8; }
+          p { color: #94a3b8; line-height: 1.5; }
+          code { background: #1e293b; padding: 0.2rem 0.4rem; border-radius: 4px; color: #f1f5f9; font-size: 0.9em; }
+          a { color: #38bdf8; text-decoration: none; font-weight: 500; }
+          a:hover { text-decoration: underline; }
+          .badge { display: inline-block; background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.8rem; margin-bottom: 1rem; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="badge">Playwright API v1.0</div>
+          <h2>Modern Dashboard Initializing</h2>
+          <p>The modern Vite + Shadcn UI dashboard is being prepared. Build static assets via:</p>
+          <p><code>npm run build:web</code></p>
+          <div style="margin-top: 1.5rem; display: flex; gap: 1rem; justify-content: center;">
+            <a href="/api-docs">Interactive API Docs</a>
+            <span style="color: #475569;">|</span>
+            <a href="/api/v1/health">Health Check</a>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  });
+}
 
 module.exports = router;

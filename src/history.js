@@ -5,6 +5,8 @@
  * Used by the monitoring dashboard to display execution history and stats.
  */
 
+const fs = require('fs');
+const path = require('path');
 const Redis = require('ioredis');
 const config = require('./config');
 
@@ -16,6 +18,8 @@ function getRedis() {
     redis = new Redis({
       host: config.redis.host,
       port: config.redis.port,
+      password: config.redis.password,
+      tls: config.redis.tls,
       maxRetriesPerRequest: null,
       lazyConnect: true,
     });
@@ -46,7 +50,7 @@ function generateId() {
  *
  * @param {string} id - Request ID
  * @param {object} payload - The original request payload
- * @param {'sync'|'async'} type - Execution type
+ * @param {'sync'|'async'|'scheduled'} type - Execution type
  * @returns {Promise<void>}
  */
 async function recordRequest(id, payload, type) {
@@ -78,13 +82,16 @@ async function recordRequest(id, payload, type) {
       duration: '',
       success: '',
       error: '',
-      stepsTotal: payload.workflow.length,
+      stepsTotal: (payload.workflow || []).length,
       stepsCompleted: 0,
       workflow: JSON.stringify(workflowSummary),
+      fullPayload: JSON.stringify(payload),
       webhookUrl: payload.webhook_url || '',
       config: JSON.stringify(payload.config || {}),
       variables: '{}',
       resultSummary: '[]',
+      recording: '',
+      rawResult: '',
     };
 
     await r.hset(`${PREFIX}${id}`, data);
@@ -103,6 +110,16 @@ async function recordRequest(id, payload, type) {
       if (toRemove.length > 0) {
         const pipeline = r.pipeline();
         for (const oldId of toRemove) {
+          try {
+            const oldRec = await r.hget(`${PREFIX}${oldId}`, 'recording');
+            if (oldRec) {
+              const parsed = JSON.parse(oldRec);
+              if (parsed.filename) {
+                const fPath = path.join(config.recordingsDir, parsed.filename);
+                if (fs.existsSync(fPath)) fs.unlinkSync(fPath);
+              }
+            }
+          } catch {}
           pipeline.del(`${PREFIX}${oldId}`);
         }
         pipeline.zremrangebyrank(INDEX_KEY, 0, count - config.historyMaxItems - 1);
@@ -118,7 +135,7 @@ async function recordRequest(id, payload, type) {
  * Update request with execution result.
  *
  * @param {string} id - Request ID
- * @param {object} result - The execution result { success, results, variables, error?, failedAtIndex? }
+ * @param {object} result - The execution result { success, results, variables, error?, failedAtIndex?, recording? }
  * @param {number} duration - Execution duration in ms
  * @returns {Promise<void>}
  */
@@ -126,17 +143,17 @@ async function completeRequest(id, result, duration) {
   try {
     const r = getRedis();
 
-    // Create a summary of results without large data (screenshots)
-    const resultSummary = (result.results || []).map((r) => {
-      const summary = { action: r.action, index: r.index };
-      if (r.error) summary.error = r.error;
-      if (r.data) {
-        if (r.data.url) summary.data = { url: r.data.url };
-        else if (r.data.result !== undefined) summary.data = { result: r.data.result };
-        else if (r.data.cookie) summary.data = { cookie: r.data.cookie };
-        else if (r.data.screenshot) summary.data = { screenshot: `[${r.data.screenshot.length} chars]` };
-        else if (r.data.name !== undefined) summary.data = { name: r.data.name, value: r.data.value };
-        else summary.data = r.data;
+    // Create a summary of results without excessively large data
+    const resultSummary = (result.results || []).map((stepRes) => {
+      const summary = { action: stepRes.action, index: stepRes.index };
+      if (stepRes.error) summary.error = stepRes.error;
+      if (stepRes.data) {
+        if (stepRes.data.url) summary.data = { url: stepRes.data.url };
+        else if (stepRes.data.result !== undefined) summary.data = { result: stepRes.data.result };
+        else if (stepRes.data.cookie) summary.data = { cookie: stepRes.data.cookie };
+        else if (stepRes.data.screenshot) summary.data = { screenshot: stepRes.data.screenshot }; // Keep base64 for dashboard modal inspector!
+        else if (stepRes.data.name !== undefined) summary.data = { name: stepRes.data.name, value: stepRes.data.value };
+        else summary.data = stepRes.data;
       }
       return summary;
     });
@@ -150,6 +167,8 @@ async function completeRequest(id, result, duration) {
       stepsCompleted: result.results ? result.results.length : 0,
       variables: JSON.stringify(result.variables || {}),
       resultSummary: JSON.stringify(resultSummary),
+      recording: result.recording ? JSON.stringify(result.recording) : '',
+      rawResult: JSON.stringify(result),
     };
 
     if (result.failedAtIndex !== undefined) {
@@ -198,15 +217,16 @@ async function getHistory(page = 1, limit = 20) {
           id: data.id,
           type: data.type,
           status: data.status,
-          startedAt: parseInt(data.startedAt),
-          completedAt: data.completedAt ? parseInt(data.completedAt) : null,
-          duration: data.duration ? parseInt(data.duration) : null,
+          startedAt: parseInt(data.startedAt, 10),
+          completedAt: data.completedAt ? parseInt(data.completedAt, 10) : null,
+          duration: data.duration ? parseInt(data.duration, 10) : null,
           success: data.success === '1',
           error: data.error || null,
-          stepsTotal: parseInt(data.stepsTotal) || 0,
-          stepsCompleted: parseInt(data.stepsCompleted) || 0,
+          stepsTotal: parseInt(data.stepsTotal, 10) || 0,
+          stepsCompleted: parseInt(data.stepsCompleted, 10) || 0,
           webhookUrl: data.webhookUrl || null,
           config: JSON.parse(data.config || '{}'),
+          recording: data.recording ? JSON.parse(data.recording) : null,
         });
       }
     }
@@ -230,23 +250,63 @@ async function getRequestDetail(id) {
     const data = await r.hgetall(`${PREFIX}${id}`);
     if (!data || !data.id) return null;
 
+    const parsedVariables = JSON.parse(data.variables || '{}');
+    const parsedResults = JSON.parse(data.resultSummary || '[]');
+    const parsedConfig = JSON.parse(data.config || '{}');
+    const parsedWorkflow = JSON.parse(data.workflow || '[]');
+    const parsedRecording = data.recording ? JSON.parse(data.recording) : null;
+    
+    let parsedPayload = null;
+    if (data.fullPayload) {
+      try {
+        parsedPayload = JSON.parse(data.fullPayload);
+      } catch {}
+    }
+    if (!parsedPayload) {
+      parsedPayload = {
+        config: parsedConfig,
+        workflow: parsedWorkflow,
+        webhook_url: data.webhookUrl || undefined,
+      };
+    }
+
+    let parsedResult = null;
+    if (data.rawResult) {
+      try {
+        parsedResult = JSON.parse(data.rawResult);
+      } catch {}
+    }
+    if (!parsedResult) {
+      parsedResult = {
+        success: data.success === '1',
+        error: data.error || null,
+        failedAtIndex: data.failedAtIndex !== undefined && data.failedAtIndex !== '' ? parseInt(data.failedAtIndex, 10) : null,
+        results: parsedResults,
+        variables: parsedVariables,
+        recording: parsedRecording,
+      };
+    }
+
     return {
       id: data.id,
       type: data.type,
       status: data.status,
-      startedAt: parseInt(data.startedAt),
-      completedAt: data.completedAt ? parseInt(data.completedAt) : null,
-      duration: data.duration ? parseInt(data.duration) : null,
+      startedAt: parseInt(data.startedAt, 10),
+      completedAt: data.completedAt ? parseInt(data.completedAt, 10) : null,
+      duration: data.duration ? parseInt(data.duration, 10) : null,
       success: data.success === '1',
       error: data.error || null,
-      failedAtIndex: data.failedAtIndex !== undefined ? parseInt(data.failedAtIndex) : null,
-      stepsTotal: parseInt(data.stepsTotal) || 0,
-      stepsCompleted: parseInt(data.stepsCompleted) || 0,
+      failedAtIndex: data.failedAtIndex !== undefined && data.failedAtIndex !== '' ? parseInt(data.failedAtIndex, 10) : null,
+      stepsTotal: parseInt(data.stepsTotal, 10) || 0,
+      stepsCompleted: parseInt(data.stepsCompleted, 10) || 0,
       webhookUrl: data.webhookUrl || null,
-      workflow: JSON.parse(data.workflow || '[]'),
-      config: JSON.parse(data.config || '{}'),
-      variables: JSON.parse(data.variables || '{}'),
-      results: JSON.parse(data.resultSummary || '[]'),
+      payload: parsedPayload,
+      workflow: parsedWorkflow,
+      config: parsedConfig,
+      variables: parsedVariables,
+      results: parsedResults,
+      recording: parsedRecording,
+      result: parsedResult,
     };
   } catch (err) {
     console.warn(`[History] Failed to get request detail: ${err.message}`);
@@ -264,20 +324,20 @@ async function getStats() {
     const r = getRedis();
     const stats = await r.hgetall(STATS_KEY);
 
-    const totalCompleted = parseInt(stats.totalCompleted) || 0;
-    const totalDuration = parseInt(stats.totalDuration) || 0;
+    const totalCompleted = parseInt(stats.totalCompleted, 10) || 0;
+    const totalDuration = parseInt(stats.totalDuration, 10) || 0;
     const avgDuration = totalCompleted > 0 ? Math.round(totalDuration / totalCompleted) : 0;
 
     return {
-      totalRequests: parseInt(stats.totalRequests) || 0,
-      totalSync: parseInt(stats.total_sync) || 0,
-      totalAsync: parseInt(stats.total_async) || 0,
-      totalSuccess: parseInt(stats.totalSuccess) || 0,
-      totalFailed: parseInt(stats.totalFailed) || 0,
+      totalRequests: parseInt(stats.totalRequests, 10) || 0,
+      totalSync: parseInt(stats.total_sync, 10) || 0,
+      totalAsync: parseInt(stats.total_async, 10) || 0,
+      totalSuccess: parseInt(stats.totalSuccess, 10) || 0,
+      totalFailed: parseInt(stats.totalFailed, 10) || 0,
       totalCompleted,
       avgDuration,
       successRate: totalCompleted > 0
-        ? Math.round((parseInt(stats.totalSuccess) || 0) / totalCompleted * 100)
+        ? Math.round((parseInt(stats.totalSuccess, 10) || 0) / totalCompleted * 100)
         : 0,
     };
   } catch (err) {
@@ -297,4 +357,5 @@ module.exports = {
   getHistory,
   getRequestDetail,
   getStats,
+  _setRedis: (mock) => { redis = mock; },
 };

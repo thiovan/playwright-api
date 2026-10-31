@@ -1,5 +1,5 @@
 services:
-  # ── Redis (Message Broker) ─────────────────────────────────────────────────
+  # ── Redis (Message Broker & State Store) ──────────────────────────────────
   redis:
     image: redis:alpine
     container_name: playwright-redis
@@ -14,7 +14,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Playwright API + Worker ────────────────────────────────────────────────
+  # ── Playwright API + Worker + Shadcn Dashboard ─────────────────────────────
   app:
     build:
       context: .
@@ -23,16 +23,28 @@ services:
     ports:
       - "3000:3000"
       - "8080:8080"
+    volumes:
+      - ./recordings:/app/recordings
     environment:
       - PORT=3000
+      - NODE_ENV=production
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_TLS=false
       - CONCURRENCY=3
       - ACTION_TIMEOUT=60000
       - WORKFLOW_TIMEOUT=300000
       - WEBHOOK_TIMEOUT=30000
       - HISTORY_TTL=86400
       - HISTORY_MAX_ITEMS=1000
+      - VNC_HOST=localhost
+      - VNC_PORT=8080
+      - DISPLAY=:99
+      - RECORDINGS_DIR=/app/recordings
+      - RECORDINGS_TTL=86400
+      - DASHBOARD_DEFAULT_USERNAME=admin
+      - DASHBOARD_DEFAULT_PASSWORD=admin
     depends_on:
       redis:
         condition: service_healthy

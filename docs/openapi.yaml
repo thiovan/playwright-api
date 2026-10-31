@@ -3,31 +3,46 @@ openapi: "3.0.3"
 info:
   title: Playwright API Automation Engine
   description: |
-    A JSON workflow-driven browser automation API powered by Playwright.
-    Supports synchronous execution, asynchronous queue-based execution with webhook callbacks,
-    stealth mode for bot detection bypass, and multi-instance concurrency.
-  version: "1.0.0"
+    Enterprise-grade JSON workflow-driven browser automation API powered by Playwright.
+    Features modern Shadcn UI dashboard, synchronous and asynchronous execution (BullMQ),
+    drag-and-drop workflow builder, API key management, template library, cron scheduler,
+    debugging screen recordings (.webm), and remote browser visual inspection (noVNC).
+  version: "1.1.0"
   contact:
-    name: Playwright API
+    name: Playwright API Team
   license:
     name: MIT
 
 servers:
   - url: http://localhost:3000
-    description: Local Docker environment
+    description: Local Docker / Dev Environment
 
 tags:
   - name: Health
-    description: Server health monitoring
+    description: Server health & telemetry monitoring
   - name: Execution
-    description: Workflow execution endpoints
+    description: Synchronous & asynchronous workflow execution
+  - name: Recordings
+    description: Screen recording artifacts (.webm)
+  - name: Dashboard Auth
+    description: Dashboard administrator authentication & session management
+  - name: Dashboard Analytics
+    description: Queue telemetry, metrics, and execution history
+  - name: Dashboard Keys
+    description: API Key lifecycle management for external integrations
+  - name: Dashboard Templates
+    description: Pre-configured and custom workflow templates
+  - name: Dashboard Schedules
+    description: Cron and interval-based recurring workflow jobs
+  - name: Dashboard Setup
+    description: Redis connection and environment configuration
 
 paths:
   /api/v1/health:
     get:
       tags: [Health]
       summary: Health Check
-      description: Returns the current server status, timestamp, and uptime.
+      description: Returns current server status, timestamp, uptime, and database connectivity.
       operationId: healthCheck
       responses:
         "200":
@@ -36,68 +51,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
-              example:
-                status: ok
-                timestamp: "2026-06-06T08:30:00.000Z"
-                uptime: 3600.5
 
   /api/v1/sync:
     post:
       tags: [Execution]
       summary: Synchronous Workflow Execution
       description: |
-        Executes a Playwright workflow synchronously. The HTTP connection stays open
-        until the entire workflow completes. Returns the execution results directly
-        in the response body.
-
-        **Use case:** When you need immediate results and can wait for the workflow to finish.
+        Executes a browser workflow synchronously. The HTTP connection remains open until
+        completion. If API keys are configured, provide the key via `x-api-key` header.
       operationId: syncExecution
+      security:
+        - {}
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/WorkflowPayload"
-            examples:
-              simple_screenshot:
-                summary: Screenshot a website
-                value:
-                  workflow:
-                    - action: goto
-                      value: "https://example.com"
-                    - action: screenshot
-              search_and_capture:
-                summary: Search DuckDuckGo and screenshot results
-                value:
-                  config:
-                    viewport:
-                      width: 1280
-                      height: 800
-                    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-                  workflow:
-                    - action: goto
-                      value: "https://duckduckgo.com"
-                    - action: type
-                      selector: "#searchbox_input"
-                      value: ferrari
-                    - action: press
-                      value: Enter
-                    - action: wait
-                      value: 3000
-                    - action: screenshot
-              with_cookies:
-                summary: Set cookies and evaluate page
-                value:
-                  workflow:
-                    - action: goto
-                      value: "https://example.com"
-                    - action: cookie-set
-                      name: session_id
-                      value: abc123
-                    - action: cookie-get
-                      name: session_id
-                    - action: eval
-                      value: "return document.title"
       responses:
         "200":
           description: Workflow executed successfully
@@ -105,79 +76,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
-              example:
-                success: true
-                results:
-                  - action: goto
-                    index: 0
-                    data:
-                      url: "https://example.com/"
-                  - action: screenshot
-                    index: 1
-                    data:
-                      screenshot: "iVBORw0KGgoAAAANSUhEUgAA..."
+        "401":
+          description: Unauthorized (Invalid or missing API key when required)
         "400":
-          description: Invalid payload (validation errors)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
-              example:
-                success: false
-                errors:
-                  - 'Field "workflow" is required and must be a non-empty array.'
+          description: Validation error in workflow payload
         "422":
           description: Workflow execution failed at a specific step
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExecutionErrorResponse"
-              example:
-                success: false
-                results:
-                  - action: goto
-                    index: 0
-                    data:
-                      url: "https://example.com/"
-                error: 'Action "click" failed at step 1: locator.click: Timeout 60000ms exceeded.'
-                failedAtIndex: 1
         "500":
           description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalErrorResponse"
 
   /api/v1/async:
     post:
       tags: [Execution]
-      summary: Asynchronous Workflow Execution (Queue)
+      summary: Asynchronous Workflow Execution (BullMQ Queue)
       description: |
-        Queues a workflow for asynchronous execution via BullMQ. Returns immediately
-        with a job ID. Once the workflow completes, the results are delivered via
-        HTTP POST to the specified `webhook_url`.
-
-        **Use case:** Fire-and-forget execution when you don't need to wait for results.
-
-        **Note:** The `webhook_url` field is **required** for this endpoint.
+        Enqueues a workflow for asynchronous execution. Returns a BullMQ job ID immediately.
+        Results are posted to `webhook_url` upon completion.
       operationId: asyncExecution
+      security:
+        - {}
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/AsyncWorkflowPayload"
-            examples:
-              async_screenshot:
-                summary: Queue a screenshot job with webhook
-                value:
-                  webhook_url: "https://webhook.site/your-unique-id"
-                  workflow:
-                    - action: goto
-                      value: "https://example.com"
-                    - action: eval
-                      value: "return document.title"
-                    - action: screenshot
       responses:
         "202":
           description: Workflow queued successfully
@@ -185,78 +109,281 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AsyncAcceptedResponse"
-              example:
-                success: true
-                message: "Workflow has been queued for execution."
-                jobId: "1"
+        "401":
+          description: Unauthorized
         "400":
-          description: Invalid payload or missing webhook_url
+          description: Missing or invalid webhook_url / payload
+
+  /api/v1/recordings/{filename}:
+    get:
+      tags: [Recordings]
+      summary: Stream or Download Screen Recording
+      description: Serves WebM screen recording video files captured during workflow execution.
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "rec_1730419200000.webm"
+      responses:
+        "200":
+          description: Video stream (.webm)
+          content:
+            video/webm:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Recording not found
+
+  # ── Dashboard Auth Endpoints ───────────────────────────────────────────────
+  /api/v1/dashboard/auth/login:
+    post:
+      tags: [Dashboard Auth]
+      summary: Dashboard Admin Login
+      description: Authenticates admin credentials and returns a Bearer session token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  example: admin
+      responses:
+        "200":
+          description: Authentication successful
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
-              example:
-                success: false
-                errors:
-                  - 'Field "webhook_url" is required for async execution and must be a valid URL string.'
-        "500":
-          description: Internal server error
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  token: { type: string, example: "agt_1a2b3c4d5e6f" }
+                  user:
+                    type: object
+                    properties:
+                      username: { type: string, example: "admin" }
+                      isDefault: { type: boolean, example: true }
+        "401":
+          description: Invalid username or password
+
+  /api/v1/dashboard/auth/status:
+    get:
+      tags: [Dashboard Auth]
+      summary: Check Auth Session Status
+      responses:
+        "200":
+          description: Current authentication status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/InternalErrorResponse"
+                type: object
+                properties:
+                  authenticated: { type: boolean }
+                  user: { type: object }
+
+  /api/v1/dashboard/auth/logout:
+    post:
+      tags: [Dashboard Auth]
+      summary: Revoke Session Token
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Successfully logged out
+
+  # ── Dashboard Telemetry & History ──────────────────────────────────────────
+  /api/v1/dashboard/stats:
+    get:
+      tags: [Dashboard Analytics]
+      summary: Telemetry Stats & Queue Counts
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Aggregate statistics
+
+  /api/v1/dashboard/history:
+    get:
+      tags: [Dashboard Analytics]
+      summary: Paginated Execution History
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Paginated request items
+
+  /api/v1/dashboard/history/{id}:
+    get:
+      tags: [Dashboard Analytics]
+      summary: Execution Trace & Video Details
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Detailed trace, results, and recording URL
+
+  # ── API Key Management ────────────────────────────────────────────────────
+  /api/v1/dashboard/keys:
+    get:
+      tags: [Dashboard Keys]
+      summary: List API Keys
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of registered keys
+    post:
+      tags: [Dashboard Keys]
+      summary: Generate New API Key
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        "201":
+          description: Newly generated API key (raw token revealed once)
+
+  # ── Template Library ──────────────────────────────────────────────────────
+  /api/v1/dashboard/templates:
+    get:
+      tags: [Dashboard Templates]
+      summary: List Workflow Templates
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Array of workflow templates
+    post:
+      tags: [Dashboard Templates]
+      summary: Save or Update Template
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Template saved
+
+  # ── Scheduled Workflows ───────────────────────────────────────────────────
+  /api/v1/dashboard/schedules:
+    get:
+      tags: [Dashboard Schedules]
+      summary: List Active Cron Schedules
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of scheduled recurring workflows
+    post:
+      tags: [Dashboard Schedules]
+      summary: Create Scheduled Workflow Job
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Schedule registered
+
+  # ── Setup & Diagnostics ───────────────────────────────────────────────────
+  /api/v1/dashboard/setup/status:
+    get:
+      tags: [Dashboard Setup]
+      summary: Get Infrastructure Status
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Server and Redis telemetry
+
+  /api/v1/dashboard/vnc:
+    get:
+      tags: [Dashboard Setup]
+      summary: Probe noVNC Connection Status
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Status of port 8080 and live stream URL
 
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: API Key authentication for external integrations
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Session Bearer token for dashboard management endpoints
+
   schemas:
-    # ── Request Schemas ────────────────────────────────────────────────
     BrowserConfig:
       type: object
-      description: Browser launch and context configuration
       properties:
         headless:
           type: boolean
           description: Run browser in headless mode
           default: true
+        recordVideo:
+          type: boolean
+          description: Enable WebM video screen recording for debugging (auto-enabled when headless=false)
+          default: false
+        noMedia:
+          type: boolean
+          description: Abort image/media/font downloads to maximize execution speed
+          default: false
+        debug:
+          type: boolean
+          description: Include verbose step logs and internal variables in response
+          default: true
         viewport:
           type: object
-          description: Browser viewport dimensions
           properties:
-            width:
-              type: integer
-              description: Viewport width in pixels
-              default: 1280
-            height:
-              type: integer
-              description: Viewport height in pixels
-              default: 720
+            width: { type: integer, default: 1280 }
+            height: { type: integer, default: 720 }
         userAgent:
           type: string
-          description: Custom User-Agent string
-          example: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         proxy:
           type: object
-          description: Proxy server configuration
           properties:
-            server:
-              type: string
-              description: Proxy server URL
-              example: "http://proxy.example.com:8000"
-            username:
-              type: string
-              description: Proxy authentication username
-            password:
-              type: string
-              description: Proxy authentication password
+            server: { type: string }
+            username: { type: string }
+            password: { type: string }
 
     WorkflowAction:
       type: object
-      description: A single workflow action step
-      required:
-        - action
+      required: [action]
       properties:
         action:
           type: string
-          description: The action to perform
+          description: Automation command
           enum:
             - goto
             - close
@@ -279,188 +406,92 @@ components:
             - cookie-get
             - wait
             - wait-for
+            - get-text
+            - get-attribute
+            - var-set
+            - var-get
+            - if
+            - loop
+            - loop-elements
+            - dialog-dismiss
+            - dialog-accept
         selector:
           type: string
-          description: CSS selector, XPath, or Playwright locator for the target element
-          example: "#searchbox_input"
+          example: "#submit-button"
         value:
-          description: Action-specific value (URL, text, key name, JS code, milliseconds, etc.)
-          oneOf:
-            - type: string
-            - type: integer
-          example: "https://example.com"
+          description: Action payload value (string, integer, JS expression)
         name:
           type: string
-          description: Cookie name (for cookie-set and cookie-get actions)
+          description: Variable or cookie name
+        push:
+          type: boolean
+          description: If true, appends variable into an array instead of overwriting
         dx:
           type: number
-          description: Horizontal scroll delta (for mousewheel action)
         dy:
           type: number
-          description: Vertical scroll delta (for mousewheel action)
 
     WorkflowPayload:
       type: object
-      description: Synchronous execution payload
-      required:
-        - workflow
+      required: [workflow]
       properties:
         config:
           $ref: "#/components/schemas/BrowserConfig"
         workflow:
           type: array
-          description: Sequential array of workflow action steps
           minItems: 1
           items:
             $ref: "#/components/schemas/WorkflowAction"
 
     AsyncWorkflowPayload:
       type: object
-      description: Asynchronous execution payload (requires webhook_url)
-      required:
-        - workflow
-        - webhook_url
+      required: [workflow, webhook_url]
       properties:
         config:
           $ref: "#/components/schemas/BrowserConfig"
         webhook_url:
           type: string
           format: uri
-          description: URL to receive execution results via POST callback
-          example: "https://webhook.site/your-unique-id"
         workflow:
           type: array
-          description: Sequential array of workflow action steps
           minItems: 1
           items:
             $ref: "#/components/schemas/WorkflowAction"
 
-    # ── Response Schemas ───────────────────────────────────────────────
     HealthResponse:
       type: object
       properties:
-        status:
-          type: string
-          example: ok
-        timestamp:
-          type: string
-          format: date-time
-        uptime:
-          type: number
-          description: Server uptime in seconds
+        status: { type: string, example: "ok" }
+        timestamp: { type: string, format: date-time }
+        uptime: { type: number }
 
     StepResult:
       type: object
       properties:
-        action:
-          type: string
-          description: The action that was executed
-        index:
-          type: integer
-          description: Step index (0-based)
-        data:
-          type: object
-          nullable: true
-          description: Action-specific result data
-          properties:
-            url:
-              type: string
-              description: Current page URL (for goto action)
-            screenshot:
-              type: string
-              description: Base64-encoded PNG screenshot
-            result:
-              description: JavaScript evaluation result (for eval action)
-            cookie:
-              type: object
-              nullable: true
-              description: Cookie object (for cookie-get action)
-        error:
-          type: string
-          description: Error message if this step failed
+        action: { type: string }
+        index: { type: integer }
+        data: { type: object, nullable: true }
+        error: { type: string }
 
     SuccessResponse:
       type: object
       properties:
-        success:
-          type: boolean
-          example: true
+        success: { type: boolean, example: true }
+        duration: { type: number }
+        variables: { type: object }
         results:
           type: array
           items:
             $ref: "#/components/schemas/StepResult"
-
-    ExecutionErrorResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-          example: false
-        results:
-          type: array
-          description: Steps completed before the failure
-          items:
-            $ref: "#/components/schemas/StepResult"
-        error:
-          type: string
-          description: Error message from the failed step
-        failedAtIndex:
-          type: integer
-          description: Index of the step that caused the failure (0-based)
-
-    ValidationErrorResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-          example: false
-        errors:
-          type: array
-          items:
-            type: string
-          description: List of validation error messages
+        recording:
+          type: object
+          properties:
+            filename: { type: string }
+            url: { type: string }
 
     AsyncAcceptedResponse:
       type: object
       properties:
-        success:
-          type: boolean
-          example: true
-        message:
-          type: string
-          example: "Workflow has been queued for execution."
-        jobId:
-          type: string
-          description: Unique job ID for tracking
-
-    WebhookCallbackPayload:
-      type: object
-      description: |
-        Payload sent to the webhook_url after async workflow completion.
-        Delivered as an HTTP POST with Content-Type application/json.
-      properties:
-        jobId:
-          type: string
-          description: The job ID from the async submission
-        success:
-          type: boolean
-        results:
-          type: array
-          items:
-            $ref: "#/components/schemas/StepResult"
-        error:
-          type: string
-          description: Error message if workflow failed
-        failedAtIndex:
-          type: integer
-          description: Index of the failed step (if any)
-
-    InternalErrorResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-          example: false
-        error:
-          type: string
-          example: "Internal server error."
+        success: { type: boolean, example: true }
+        message: { type: string, example: "Workflow queued for execution." }
+        jobId: { type: string }

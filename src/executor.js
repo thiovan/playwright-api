@@ -3,9 +3,11 @@
  *
  * Parses a JSON workflow array and executes each action sequentially
  * using Playwright with stealth mode enabled.
- * Supports looping, conditionals, and variables.
+ * Supports looping, conditionals, variables, and video recording for debugging.
  */
 
+const fs = require('fs');
+const path = require('path');
 const { chromium } = require("playwright-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const config = require("./config");
@@ -56,7 +58,7 @@ function interpolateStep(step, vars) {
  * Execute a full workflow payload.
  *
  * @param {object} payload - The validated JSON payload
- * @returns {Promise<object>} - { success, results, variables, error?, failedAtIndex? }
+ * @returns {Promise<object>} - { success, results, variables, error?, failedAtIndex?, recording? }
  */
 async function executeWorkflow(payload) {
   const browserConfig = payload.config || {};
@@ -65,6 +67,7 @@ async function executeWorkflow(payload) {
   let browser = null;
   let context = null;
   let page = null;
+  let videoHandle = null;
   const results = [];
   const variables = {};
 
@@ -98,6 +101,18 @@ async function executeWorkflow(payload) {
       contextOptions.userAgent = browserConfig.userAgent;
     }
 
+    // ── Screen Recording (Debug / headless: false) ────────────────────
+    const shouldRecord = (browserConfig.headless === false && browserConfig.recordVideo !== false) || Boolean(browserConfig.recordVideo);
+    if (shouldRecord) {
+      if (!fs.existsSync(config.recordingsDir)) {
+        fs.mkdirSync(config.recordingsDir, { recursive: true });
+      }
+      contextOptions.recordVideo = {
+        dir: config.recordingsDir,
+        size: contextOptions.viewport,
+      };
+    }
+
     context = await browser.newContext(contextOptions);
     
     if (browserConfig.noMedia) {
@@ -112,10 +127,32 @@ async function executeWorkflow(payload) {
     }
     
     page = await context.newPage();
+    if (shouldRecord && page.video) {
+      videoHandle = page.video();
+    }
 
     // ── Execute workflow steps recursively ──────────────────────────
     const execResult = await executeSteps(workflow, page, context, variables, results, 0);
     
+    // Close context to finalize video writing
+    let recordingInfo = null;
+    try {
+      if (context) await context.close();
+      context = null;
+      if (videoHandle) {
+        const videoPath = await videoHandle.path();
+        if (videoPath && fs.existsSync(videoPath)) {
+          const filename = path.basename(videoPath);
+          recordingInfo = {
+            filename,
+            url: `/api/v1/recordings/${filename}`,
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     const formatRes = (success, results, vars, extra = {}) => {
       const finalVars = { ...vars };
       if (browserConfig.debug === false) {
@@ -124,6 +161,7 @@ async function executeWorkflow(payload) {
         }
       }
       const res = { success, ...extra, variables: finalVars };
+      if (recordingInfo) res.recording = recordingInfo;
       if (browserConfig.debug !== false) res.results = results;
       return res;
     };
@@ -137,6 +175,23 @@ async function executeWorkflow(payload) {
 
     return formatRes(true, results, variables);
   } catch (err) {
+    // Attempt to close context and salvage recording
+    let recordingInfo = null;
+    try {
+      if (context) await context.close();
+      context = null;
+      if (videoHandle) {
+        const videoPath = await videoHandle.path();
+        if (videoPath && fs.existsSync(videoPath)) {
+          const filename = path.basename(videoPath);
+          recordingInfo = {
+            filename,
+            url: `/api/v1/recordings/${filename}`,
+          };
+        }
+      }
+    } catch {}
+
     const finalVars = { ...variables };
     if (browserConfig.debug === false) {
       for (const key in finalVars) {
@@ -149,6 +204,7 @@ async function executeWorkflow(payload) {
       error: `Unexpected error: ${err.message}`,
       failedAtIndex: results.length,
     };
+    if (recordingInfo) res.recording = recordingInfo;
     if (browserConfig.debug !== false) res.results = results;
     return res;
   } finally {

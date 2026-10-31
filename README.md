@@ -1,440 +1,270 @@
-# 🎭 Playwright API Automation Engine
+# 🎭 Playwright API Automation Engine & Modern Dashboard
 
-A Node.js web server that accepts JSON workflow payloads to execute browser automation via Playwright. Supports synchronous and asynchronous (queue/webhook) execution, multi-instance concurrency, dynamic browser configuration, and stealth mode to bypass bot detection.
+Node.js REST API and interactive automation workspace powered by Playwright and BullMQ. Features a modern Shadcn UI dashboard, visual drag-and-drop workflow builder, API key management, workflow templates, cron scheduler, debugging screen recordings (.webm), and remote browser visual inspection via noVNC.
 
 ---
 
 ## ✨ Features
 
-- **JSON-Driven Workflows** — Define browser automation as a simple JSON array of actions
-- **Sync & Async Execution** — Choose between blocking responses or queue-based webhook delivery
-- **30 Workflow Actions** — Navigation, form filling, keyboard/mouse, cookies, screenshots, JS evaluation, variables, loops, conditionals, and dialogs
-- **Variables & Control Flow** — Set/get state, interpolate variables, execute if/else branches, and run loops
-- **Monitoring Dashboard** — Real-time live view of queues, history, and stats via Redis
-- **Stealth Mode** — Built-in `puppeteer-extra-plugin-stealth` to bypass bot detection (Cloudflare, Datadome, etc.)
-- **Multi-Instance Concurrency** — BullMQ workers process multiple browser instances in parallel
-- **Dynamic Browser Config** — Customize viewport, user agent, proxy per request
-- **Docker-Ready** — One command to build and run with Docker Compose
-- **Swagger/OpenAPI Docs** — Interactive API documentation at `/api-docs`
-- **Live Browser Preview** — Built-in noVNC support for real-time visual debugging at `http://localhost:8080/vnc.html`
+- **Modern Shadcn UI Dashboard** — Web console accessible at `/dashboard` with dark-mode aesthetic, metrics, BullMQ telemetry, and real-time execution inspect modal.
+- **Visual Drag-and-Drop Workflow Builder** — Canvas powered by `@xyflow/react` to design, test, run, and export complex multi-step browser automations visually.
+- **Admin Authentication & Session Security** — Dashboard protected by PBKDF2 hashed credentials and Bearer token sessions (default credentials: `admin` / `admin`).
+- **External API Key Management** — Generate, toggle, and revoke `ak_live_*` API keys with SHA-256 validation for third-party application integration.
+- **Workflow Template Library** — Save, tag, and reuse battle-tested automation routines directly into the builder.
+- **Scheduled Automated Runs** — Set cron expressions (e.g. `0 9 * * 1-5`) or interval timers to execute workflows automatically in the background.
+- **Debugging Screen Recordings (.webm)** — Automatically captures video of workflow executions when `headless: false` or `recordVideo: true`, with inline playback and downloads.
+- **Live Browser Stream (noVNC)** — Real-time remote Xvfb display mirroring on port `8080` to watch visible browser executions inside Docker.
+- **Quick Setup & Infrastructure Diagnostics** — Live Redis connection latency tester and `.env` configuration manager within the dashboard.
+- **Sync & Async Execution** — Choose between immediate synchronous responses or asynchronous BullMQ queues with webhook callbacks.
+- **30 Workflow Actions** — Navigation, form filling, keystrokes, mouse events, cookies, DOM queries, JS evaluations, runtime variables, and control flow loops/conditions.
+- **Stealth Mode** — Integrated `puppeteer-extra-plugin-stealth` to evade bot detection (Cloudflare, Datadome, PerimeterX).
+- **Multi-Instance Concurrency** — Scale parallel headless browsers with configurable concurrency limits.
 
 ---
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### 1. Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine + Compose
+- Alternatively, Node.js 18+ and Redis for local host development.
 
-### Run with Docker Compose
+### 2. Run with Docker Compose (Recommended)
 
 ```bash
-# Clone or navigate to the project directory
+# Clone the repository
+git clone https://github.com/thiovan/playwright-api.git
 cd playwright-api
 
-# Build and start containers
-docker-compose up --build -d
-
-# Verify containers are running
-docker-compose ps
-
-# Check health
-curl http://localhost:3000/api/v1/health
+# Start Redis and Playwright API + Dashboard
+docker compose up --build -d
 ```
 
-The API will be available at `http://localhost:3000`.
-Swagger docs will be available at `http://localhost:3000/api-docs`.
-Live browser preview (noVNC) will be available at `http://localhost:8080/vnc.html`.
+Once running:
+- **Web Dashboard**: [http://localhost:3000/dashboard](http://localhost:3000/dashboard) (Login: `admin` / `admin`)
+- **Interactive Swagger Docs**: [http://localhost:3000/api-docs](http://localhost:3000/api-docs)
+- **Live noVNC Stream**: [http://localhost:8080/vnc.html?autoconnect=true](http://localhost:8080/vnc.html?autoconnect=true)
+- **Health Check**: [http://localhost:3000/api/v1/health](http://localhost:3000/api/v1/health)
 
-### Run with Docker Image (GHCR)
-
-You can also run the pre-built image directly:
+### 3. Local Development (Windows / Linux / macOS)
 
 ```bash
-docker run -d -p 3000:3000 ghcr.io/thiovan/playwright-api:main
-```
-*(Note: Async queue features require a separate Redis instance)*
+# Install dependencies
+npm install
+npm --prefix web install
 
-### Stop
+# Build web frontend
+npm run build:web
 
-```bash
-docker-compose down
+# Start local server and worker
+npm run dev
 ```
+
+> **Note on VNC during local development:**
+> When running `npm run dev` directly on your host OS, workflows executed with `headless: false` will open a visible Chromium window directly on your desktop. Port 8080 noVNC streaming is active inside Docker containers.
 
 ---
 
 ## 📡 API Endpoints
 
+### Core Automation & Health
+
 | Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/health` | Health check |
-| `POST` | `/api/v1/sync` | Synchronous workflow execution |
-| `POST` | `/api/v1/async` | Asynchronous execution via queue + webhook |
-| `GET` | `/api-docs` | Interactive Swagger UI documentation |
-| `GET` | `/` | Real-time monitoring dashboard |
+|---|---|---|
+| `GET` | `/api/v1/health` | Service health status and uptime |
+| `POST` | `/api/v1/sync` | Execute browser workflow synchronously |
+| `POST` | `/api/v1/async` | Queue workflow for background execution + webhook |
+| `GET` | `/api/v1/recordings/:file` | Download or stream WebM screen recording |
+| `GET` | `/api-docs` | Interactive OpenAPI Swagger UI |
+| `GET` | `/dashboard` | Modern Vite + Shadcn UI Single-Page Dashboard |
+
+### Dashboard & Management APIs (Protected)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/dashboard/auth/login` | Authenticate admin credentials |
+| `GET` | `/api/v1/dashboard/auth/status` | Check current session validity |
+| `POST` | `/api/v1/dashboard/auth/change-password` | Update admin password |
+| `GET` | `/api/v1/dashboard/stats` | Telemetry, concurrency, and queue counts |
+| `GET` | `/api/v1/dashboard/history` | Paginated execution logs |
+| `GET` | `/api/v1/dashboard/history/:id` | Full execution trace, variables, and video URL |
+| `GET / POST` | `/api/v1/dashboard/keys` | List or generate external integration API keys |
+| `PATCH / DELETE`| `/api/v1/dashboard/keys/:id` | Toggle active status or delete API key |
+| `GET / POST` | `/api/v1/dashboard/templates` | Manage visual workflow templates |
+| `GET / POST` | `/api/v1/dashboard/schedules` | Manage cron-based scheduled workflows |
+| `GET / POST` | `/api/v1/dashboard/setup/*` | Test Redis connection and update parameters |
+| `GET` | `/api/v1/dashboard/vnc` | Probe noVNC reachability and return stream URL |
 
 ---
 
-## 📦 JSON Payload Schema
+## 📦 JSON Payload Specification
 
 ```json
 {
   "config": {
     "headless": true,
+    "recordVideo": true,
+    "noMedia": false,
+    "debug": true,
     "viewport": { "width": 1280, "height": 720 },
-    "userAgent": "custom-user-agent-string",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "proxy": {
       "server": "http://proxy.example.com:8000"
     }
   },
-  "webhook_url": "https://your-domain.com/callback",
   "workflow": [
     { "action": "goto", "value": "https://example.com" },
-    { "action": "type", "selector": "input#search", "value": "Playwright" },
-    { "action": "click", "selector": "button#submit" },
     { "action": "screenshot" }
   ]
 }
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `config` | No | Browser launch configuration |
-| `config.headless` | No | Run in headless mode (default: `true`) |
-| `config.noMedia` | No | Block images, media, and fonts to speed up execution (default: `false`) |
-| `config.debug` | No | If set to `false`, omits `results` and system variables (`_index`, `_selector`) from the final response to produce a cleaner JSON output. |
-| `config.viewport` | No | Browser viewport size (default: `1280x720`) |
-| `config.userAgent` | No | Custom User-Agent string |
-| `config.proxy` | No | Proxy server configuration |
-| `webhook_url` | `/async` only | URL to receive execution results |
-| `workflow` | Yes | Array of sequential action steps |
+### Configuration Options (`config`)
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `headless` | `boolean` | `true` | When `false`, displays browser in noVNC (Docker) or desktop (local). |
+| `recordVideo` | `boolean` | `false` | Captures WebM video of entire run (auto-enabled when `headless: false`). |
+| `noMedia` | `boolean` | `false` | Blocks images, fonts, and media streams to boost execution speed. |
+| `debug` | `boolean` | `true` | Includes individual step traces and variable states in the output. |
+| `viewport` | `object` | `1280x720`| Viewport dimensions (`width`, `height`). |
+| `userAgent` | `string` | Playwright default | Custom HTTP User-Agent header. |
+| `proxy` | `object` | `null` | Proxy configuration (`server`, `username`, `password`). |
 
 ---
 
-## 🎬 Supported Actions
+## ⚡ 30 Supported Workflow Actions
 
-### Navigation
+### Navigation & Page
+- `goto` (`value: url`) — Navigate to URL.
+- `close` — Close current page.
+- `wait` (`value: ms`) — Pause execution for specified milliseconds.
+- `wait-for` (`selector`) — Wait for selector to be attached to DOM.
 
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `goto` | `value` (URL) | Navigate to a URL |
-| `close` | — | Close the current page |
+### Form & User Interaction
+- `click` (`selector`) — Click element.
+- `dblclick` (`selector`) — Double-click element.
+- `type` (`selector`, `value`) — Input text into form field.
+- `select` (`selector`, `value`) — Choose option from dropdown.
+- `check` (`selector`) — Check checkbox or radio.
+- `uncheck` (`selector`) — Uncheck checkbox.
+- `hover` (`selector`) — Hover over target element.
+- `drag` (`selector`, `value: targetSelector`) — Drag source element onto target.
+- `upload` (`selector`, `value: filePath`) — Attach file to file input.
 
-### Form Interaction
+### Keyboard & Mouse
+- `press` (`value: key`) — Press keyboard key (e.g. `Enter`, `Tab`).
+- `keydown` (`value: key`) — Keydown event.
+- `keyup` (`value: key`) — Keyup event.
+- `mousewheel` (`dx`, `dy`) — Scroll page horizontally or vertically.
 
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `click` | `selector` | Click an element |
-| `dblclick` | `selector` | Double-click an element |
-| `type` | `selector`, `value` | Fill a text input |
-| `select` | `selector`, `value` | Select a dropdown option |
-| `check` | `selector` | Check a checkbox |
-| `uncheck` | `selector` | Uncheck a checkbox |
-| `hover` | `selector` | Hover over an element |
-| `drag` | `selector` (source), `value` (target) | Drag and drop |
-| `upload` | `selector`, `value` (filepath) | Upload a file |
+### Data Extraction & State
+- `get-text` (`selector`, `name`, `push`) — Extract element text content to variable.
+- `get-attribute` (`selector`, `value: attr`, `name`, `push`) — Extract attribute value.
+- `var-set` (`name`, `value`, `push`) — Assign static or evaluated value to variable.
+- `var-get` (`name`) — Retrieve value of runtime variable.
+- `eval` (`value: jsCode`, `selector`) — Evaluate custom JavaScript expression in page context.
+- `screenshot` (`selector`) — Capture full-page or element PNG screenshot (base64).
 
-### Output
-
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `get-text` | `selector`, `name` (optional), `push` (optional) | Extract text from element. Saves to variable if `name` is provided. If `push: true`, appends to an array. |
-| `get-attribute` | `selector`, `value` (attribute name), `name` (optional), `push` (optional) | Extract attribute from element. Saves to variable if `name` is provided. If `push: true`, appends to an array. |
-| `screenshot` | `selector` (optional) | Capture screenshot as base64 |
-| `eval` | `value` (JS code), `selector` (optional) | Execute JavaScript |
-
-### Variables & State
-
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `var-set` | `name`, `value`, `selector`/`push` (optional) | Save a variable. `value` can be a string, JS evaluation, or a JSON object. If `push: true`, it appends to an array. |
-| `var-get` | `name` | Retrieve a saved variable |
-
-*Note: Variables can be accessed in subsequent actions using `{{varName}}` template syntax.*
-
-**Example: Constructing an Array of Objects**
-You can use `var-set` with `push: true` to accumulate structured data into a list, which is highly useful inside `loop-elements`:
-```json
-{
-  "action": "var-set",
-  "name": "posts",
-  "push": true,
-  "value": {
-    "title": "{{scraped_title}}",
-    "url": "{{scraped_url}}"
-  }
-}
-```
-This automatically interpolates the nested variables and pushes the resulting object into the `posts` array variable.
-
-### Dialogs (Alert, Confirm, Prompt)
-
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `dialog-dismiss` | — | Automatically dismiss the next dialog that appears |
-| `dialog-accept` | `value` (optional) | Automatically accept the next dialog (with optional prompt input) |
-
-### Keyboard
-
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `press` | `value` (key) | Press a keyboard key |
-| `keydown` | `value` (key) | Key down event |
-| `keyup` | `value` (key) | Key up event |
-
-### Mouse
-
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `mousewheel` | `dx`, `dy` | Scroll the mouse wheel |
+### Cookies & Dialogs
+- `cookie-set` (`name`, `value`) — Set browser cookie.
+- `cookie-get` (`name`) — Read browser cookie by name.
+- `dialog-accept` (`value`) — Accept JavaScript alerts, confirms, or prompts.
+- `dialog-dismiss` — Automatically dismiss incoming JavaScript dialogs.
 
 ### Control Flow
-
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `if` | `condition`, `selector`/`name`/`value`, `workflow`, `else` (optional) | Conditionally execute workflow actions |
-| `loop` | `count`/`condition`, `workflow` | Loop over workflow actions |
-| `loop-elements`| `selector`, `workflow`, `max` (optional) | Iterate over elements matching a selector, limited by `max`. Sub-workflow can use `{{_selector}}` and `{{_index}}`. |
-
-**Supported Conditions for `if` and `loop`:**
-- `selector-exists`: Checks if an element exists in the DOM. Requires `selector` field.
-- `var-equals`: Checks if a variable equals a certain value. Requires `name` and `value` fields.
-- `eval`: Evaluates arbitrary JS logic. Requires `value` field.
-
-**Example: If Selector Exists**
-```json
-{
-  "action": "if",
-  "condition": "selector-exists",
-  "selector": ".popup-close-button",
-  "workflow": [
-    { "action": "click", "selector": ".popup-close-button" }
-  ]
-}
-```
-
-**Example: If Variable Equals**
-```json
-{
-  "action": "if",
-  "condition": "var-equals",
-  "name": "login_status",
-  "value": "success",
-  "workflow": [
-    { "action": "goto", "value": "https://example.com/dashboard" }
-  ],
-  "else": [
-    { "action": "eval", "value": "console.error('Login failed!');" }
-  ]
-}
-```
-
-### Cookies
-
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `cookie-set` | `name`, `value` | Set a cookie |
-| `cookie-get` | `name` | Get a cookie by name |
-
-### Wait
-
-| Action | Fields | Description |
-|--------|--------|-------------|
-| `wait` | `value` (ms) | Wait for a fixed duration |
-| `wait-for` | `selector` | Wait for an element to appear |
+- `if` (`condition`, `selector`/`name`/`value`, `workflow`, `else`) — Branching logic.
+- `loop` (`count` or `condition`, `workflow`) — Repeat workflow steps.
+- `loop-elements` (`selector`, `workflow`, `max`) — Iterate over elements with `{{_selector}}` and `{{_index}}`.
 
 ---
 
-## 🧪 Testing
+## 🔐 Authentication & API Keys
 
-The repository includes a Node.js test script to verify the functionality of the Playwright API Engine. You can run it locally to test the API running in your Docker container.
+### 1. Dashboard Login
+The dashboard requires authentication. Access `/dashboard` and enter your admin credentials:
+- **Default Username**: `admin`
+- **Default Password**: `admin`
+*(You will be prompted to change default credentials via the User Profile dropdown).*
 
-### Comprehensive Test
-
-To test all 30 supported Playwright actions (navigation, form inputs, variables, loops, control flow, and screenshots) in a single workflow:
-
-```bash
-node tests/test-all.js
-```
-*This will execute against `https://the-internet.herokuapp.com` and save the result as `test_all_features.png`.*
-
----
-
-## 📋 Usage Examples
-
-### Sync: Screenshot a Website
+### 2. External Integration via API Keys
+If API keys have been created in the Dashboard, all external requests to `/api/v1/sync` and `/api/v1/async` require the `x-api-key` header:
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/sync \
   -H "Content-Type: application/json" \
-  -d '{
-    "workflow": [
-      {"action": "goto", "value": "https://example.com"},
-      {"action": "screenshot"}
-    ]
-  }'
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "results": [
-    { "action": "goto", "index": 0, "data": { "url": "https://example.com/" } },
-    { "action": "screenshot", "index": 1, "data": { "screenshot": "iVBORw0KGgo..." } }
-  ]
-}
-```
-
-### Sync: Loop and Control Flow
-
-```bash
-curl -X POST http://localhost:3000/api/v1/sync \
-  -H "Content-Type: application/json" \
-  -d '{
-    "workflow": [
-      {"action": "goto", "value": "https://example.com"},
-      {"action": "var-set", "name": "pageTitle", "value": "return document.title", "eval": true},
-      {
-        "action": "loop",
-        "count": 2,
-        "steps": [
-          {"action": "eval", "value": "console.log(\"Loop index: {{__loop_index}}, Title: {{pageTitle}}\")"}
-        ]
-      },
-      {
-        "action": "if",
-        "eval": "return document.title.includes(\"Example\")",
-        "then": [
-          {"action": "eval", "value": "console.log(\"Title matches!\")"}
-        ],
-        "else": [
-          {"action": "eval", "value": "console.log(\"Title does not match.\")"}
-        ]
-      }
-    ]
-  }'
-```
-
-### Sync: Search DuckDuckGo
-
-```bash
-curl -X POST http://localhost:3000/api/v1/sync \
-  -H "Content-Type: application/json" \
-  -d '{
-    "config": {
-      "viewport": { "width": 1280, "height": 800 },
-      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    },
-    "workflow": [
-      {"action": "goto", "value": "https://duckduckgo.com"},
-      {"action": "type", "selector": "#searchbox_input", "value": "ferrari"},
-      {"action": "press", "value": "Enter"},
-      {"action": "wait", "value": 3000},
-      {"action": "screenshot"}
-    ]
-  }'
-```
-
-### Async: Queue with Webhook
-
-```bash
-curl -X POST http://localhost:3000/api/v1/async \
-  -H "Content-Type: application/json" \
-  -d '{
-    "webhook_url": "https://webhook.site/your-unique-id",
-    "workflow": [
-      {"action": "goto", "value": "https://example.com"},
-      {"action": "eval", "value": "return document.title"},
-      {"action": "screenshot"}
-    ]
-  }'
-```
-
-**Response (immediate):**
-```json
-{
-  "success": true,
-  "message": "Workflow has been queued for execution.",
-  "jobId": "1"
-}
-```
-
-**Webhook Callback (POST to your webhook_url):**
-```json
-{
-  "jobId": "1",
-  "success": true,
-  "results": [
-    { "action": "goto", "index": 0, "data": { "url": "https://example.com/" } },
-    { "action": "eval", "index": 1, "data": { "result": "Example Domain" } },
-    { "action": "screenshot", "index": 2, "data": { "screenshot": "iVBORw0KGgo..." } }
-  ]
-}
+  -H "x-api-key: ak_live_your_generated_token_here" \
+  -d '{"workflow": [{"action": "goto", "value": "https://example.com"}]}'
 ```
 
 ---
 
-## ⚙️ Environment Variables
+## 🛠️ Environment Configuration
 
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3000` | HTTP server port |
-| `REDIS_HOST` | `localhost` | Redis host |
-| `REDIS_PORT` | `6379` | Redis port |
-| `CONCURRENCY` | `3` | Max parallel browser instances |
-| `ACTION_TIMEOUT` | `60000` | Max ms per individual Playwright action |
-| `WORKFLOW_TIMEOUT` | `300000` | Max ms for an entire workflow to complete |
-| `WEBHOOK_TIMEOUT` | `30000` | Max ms to wait when delivering webhook |
-| `HISTORY_TTL` | `86400` | Expiration time for dashboard history records (seconds) |
-| `HISTORY_MAX_ITEMS` | `1000` | Maximum number of request history items to keep |
+|---|---|---|
+| `PORT` | `3000` | Express server port |
+| `NODE_ENV` | `production` | Node environment |
+| `REDIS_HOST` | `localhost` | Redis server hostname |
+| `REDIS_PORT` | `6379` | Redis server port |
+| `REDIS_PASSWORD` | *(empty)* | Redis password authentication |
+| `REDIS_TLS` | `false` | Enable TLS/SSL connection to Redis |
+| `CONCURRENCY` | `3` | Number of simultaneous BullMQ browser workers |
+| `ACTION_TIMEOUT` | `60000` | Default timeout for individual Playwright actions (ms) |
+| `WORKFLOW_TIMEOUT`| `300000` | Max total duration for a workflow execution (ms) |
+| `RECORDINGS_DIR` | `./recordings` | Directory storing screen recording files (.webm) |
+| `RECORDINGS_TTL` | `86400` | Time to keep recordings before cleanup (seconds) |
+| `VNC_PORT` | `8080` | noVNC web streaming port |
+| `DASHBOARD_DEFAULT_USERNAME` | `admin` | Initial admin username |
+| `DASHBOARD_DEFAULT_PASSWORD` | `admin` | Initial admin password |
 
 ---
 
-## 🏗️ Project Structure
+## 📁 Repository Structure
 
 ```
 playwright-api/
 ├── src/
-│   ├── index.js          # Entry point (server + worker)
-│   ├── server.js         # Express routes & Swagger UI
-│   ├── executor.js       # Playwright workflow engine
-│   ├── queue.js          # BullMQ producer & worker
-│   ├── validator.js      # Payload validation
-│   └── config.js         # Centralized configuration
+│   ├── index.js             # Application entrypoint (server + BullMQ worker)
+│   ├── server.js            # Express routes, Swagger UI, and static hosting
+│   ├── executor.js          # Playwright action runner and video recorder
+│   ├── queue.js             # BullMQ queue producer and consumer
+│   ├── history.js           # Redis execution telemetry & trace storage
+│   ├── apiKeyManager.js     # API Key generation, hashing, and authorization
+│   ├── authManager.js       # Dashboard admin sessions and PBKDF2 auth
+│   ├── templateManager.js   # Workflow template persistence
+│   ├── schedulerManager.js  # Recurring cron job execution engine
+│   ├── setupManager.js      # Onboarding and environment editor
+│   ├── validator.js         # JSON payload validation rules
+│   ├── config.js            # Central configuration loader
+│   └── dashboard.js         # Dashboard REST APIs and VNC connectivity probe
+├── web/                     # Modern React + Vite + Shadcn UI Frontend
+│   ├── src/
+│   │   ├── components/      # UI components (Flow builder, VNC viewer, Modals)
+│   │   ├── pages/           # Overview, Builder, Queue, Keys, Schedules, Setup
+│   │   └── lib/             # API client and utility helpers
+│   ├── package.json
+│   └── vite.config.ts
 ├── docs/
-│   └── openapi.yaml      # OpenAPI 3.0 specification
-├── package.json
-├── Dockerfile
-├── docker-compose.yml
-├── .dockerignore
-├── AGENTS.md             # Product Requirements Document
-└── MEMORY.md             # AI development journal
+│   └── openapi.yaml         # OpenAPI 3.0 specification
+├── recordings/              # WebM execution recordings
+├── Dockerfile               # Container build definition (Noble + Playwright + Xvfb)
+├── docker-compose.yml       # Production stack orchestrator
+└── entrypoint.sh            # Container init script (Xvfb + x11vnc + noVNC)
 ```
 
 ---
 
-## 🐛 Error Handling
+## 🧪 Automated Testing
 
-When a workflow step fails, the engine stops execution and returns:
+Run the automated test suite covering API keys, templates, scheduler, setup manager, admin auth, and server integration:
 
-```json
-{
-  "success": false,
-  "results": [
-    { "action": "goto", "index": 0, "data": { "url": "https://example.com/" } }
-  ],
-  "error": "Action \"click\" failed at step 1: locator.click: Timeout 60000ms exceeded.",
-  "failedAtIndex": 1
-}
+```bash
+npm test
 ```
-
-- `failedAtIndex` indicates which step (0-indexed) caused the failure
-- All successfully completed steps before the failure are included in `results`
-- The browser context is always cleaned up, even on errors
 
 ---
 
 ## 📄 License
 
-MIT
+MIT © [Thiovan](https://github.com/thiovan)

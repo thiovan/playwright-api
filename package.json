@@ -5,7 +5,10 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "build:web": "npm --prefix web run build",
+    "build": "npm --prefix web install && npm --prefix web run build",
+    "test": "node tests/test-new-backend.js && node tests/test-auth.js && node tests/test-server-integration.js"
   },
   "dependencies": {
     "bullmq": "^5.31.0",

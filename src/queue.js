@@ -6,6 +6,7 @@
  */
 
 const { Queue, Worker } = require('bullmq');
+const Redis = require('ioredis');
 const config = require('./config');
 const { executeWorkflow } = require('./executor');
 const history = require('./history');
@@ -14,6 +15,8 @@ const history = require('./history');
 const connection = {
   host: config.redis.host,
   port: config.redis.port,
+  password: config.redis.password,
+  tls: config.redis.tls,
   maxRetriesPerRequest: config.redis.maxRetriesPerRequest,
 };
 
@@ -44,11 +47,15 @@ function startWorker() {
   const worker = new Worker(
     config.queueName,
     async (job) => {
-      const { reqId, payload } = job.data;
-      const webhookUrl = payload.webhook_url;
+      const { reqId, payload, isScheduled, scheduleId } = job.data;
+      const webhookUrl = payload ? payload.webhook_url : null;
       const startTime = Date.now();
 
       console.log(`[Worker] Processing job ${job.id} (Req: ${reqId})...`);
+
+      if (isScheduled) {
+        await history.recordRequest(reqId, payload, 'scheduled').catch(() => {});
+      }
 
       // Execute the workflow
       const result = await executeWorkflow(payload);
@@ -56,6 +63,23 @@ function startWorker() {
       // Record result in history
       const duration = Date.now() - startTime;
       await history.completeRequest(reqId, result, duration);
+
+      // Update schedule status if applicable
+      if (scheduleId) {
+        try {
+          const client = new Redis(connection);
+          const raw = await client.hget('playwright:schedules', scheduleId);
+          if (raw) {
+            const sch = JSON.parse(raw);
+            sch.lastRunAt = new Date().toISOString();
+            sch.lastStatus = result.success ? 'success' : 'failed';
+            await client.hset('playwright:schedules', scheduleId, JSON.stringify(sch));
+          }
+          await client.quit();
+        } catch {
+          // ignore schedule update error
+        }
+      }
 
       // Deliver result to webhook
       if (webhookUrl) {
@@ -99,7 +123,6 @@ function startWorker() {
 
   worker.on('failed', (job, err) => {
     console.error(`[Worker] Job ${job?.id} failed: ${err.message}`);
-    // If the job failed at the BullMQ level before completing execution
     if (job?.data?.reqId) {
       history.completeRequest(job.data.reqId, { success: false, error: err.message }, 0).catch(() => {});
     }

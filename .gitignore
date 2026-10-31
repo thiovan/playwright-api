@@ -1,8 +1,18 @@
 # Dependencies
 node_modules/
+web/node_modules/
+
+# Build outputs
+web/dist/
+dist/
+
+# Recordings
+recordings/
+*.webm
 
 # Environment
 .env
+.env.local
 
 # Logs
 logs/
@@ -19,6 +29,7 @@ Thumbs.db
 
 # Test artifacts
 *.png
+tests/output/
 
 # Docker volumes
 redis-data/
