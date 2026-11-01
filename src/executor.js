@@ -11,9 +11,13 @@ const path = require('path');
 const { chromium } = require("playwright-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const config = require("./config");
+const { humanClick, humanHover, humanType } = require("./humanCursor");
 
 // Register stealth plugin globally (once)
-chromium.use(StealthPlugin());
+const stealthPlugin = StealthPlugin();
+// Disable legacy hardcoded Intel WebGL evasion so custom GPU spoofer takes effect
+stealthPlugin.enabledEvasions.delete('webgl.vendor');
+chromium.use(stealthPlugin);
 
 /**
  * Replace placeholders like {{varName}} in a string with variable values.
@@ -75,6 +79,16 @@ async function executeWorkflow(payload) {
     // ── Launch browser with stealth ──────────────────────────────────
     const launchOptions = {
       headless: browserConfig.headless !== false,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-infobars',
+        '--window-position=0,0',
+        '--ignore-certificate-errors',
+        '--ignore-certificate-errors-spki-list',
+        ...(browserConfig.args || []),
+      ],
     };
 
     if (browserConfig.proxy && browserConfig.proxy.server) {
@@ -114,6 +128,65 @@ async function executeWorkflow(payload) {
     }
 
     context = await browser.newContext(contextOptions);
+
+    // ── WebGL & GPU Spoofing (Bypass llvmpipe & SwiftShader detection) ──
+    const gpuVendor = browserConfig.gpuVendor || "Google Inc. (NVIDIA)";
+    const gpuRenderer = browserConfig.gpuRenderer || "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)";
+
+    await context.addInitScript(`(() => {
+      try {
+        const vendor = ${JSON.stringify(gpuVendor)};
+        const renderer = ${JSON.stringify(gpuRenderer)};
+
+        const overrideProto = (proto) => {
+          if (!proto) return;
+          const originalGetParameter = proto.getParameter;
+          proto.getParameter = function(parameter) {
+            // UNMASKED_VENDOR_WEBGL (0x9245 / 37445)
+            if (parameter === 37445) return vendor;
+            // UNMASKED_RENDERER_WEBGL (0x9246 / 37446)
+            if (parameter === 37446) return renderer;
+            return originalGetParameter.apply(this, arguments);
+          };
+          try {
+            Object.defineProperty(proto.getParameter, 'name', { value: 'getParameter' });
+          } catch {}
+          try {
+            proto.getParameter.toString = () => 'function getParameter() { [native code] }';
+          } catch {}
+
+          const originalGetExtension = proto.getExtension;
+          proto.getExtension = function(name) {
+            if (name === 'WEBGL_debug_renderer_info') {
+              return {
+                UNMASKED_VENDOR_WEBGL: 37445,
+                UNMASKED_RENDERER_WEBGL: 37446,
+              };
+            }
+            return originalGetExtension.apply(this, arguments);
+          };
+          try {
+            proto.getExtension.toString = () => 'function getExtension() { [native code] }';
+          } catch {}
+
+          const originalGetSupportedExtensions = proto.getSupportedExtensions;
+          proto.getSupportedExtensions = function() {
+            const list = originalGetSupportedExtensions ? (originalGetSupportedExtensions.apply(this, arguments) || []) : [];
+            if (!list.includes('WEBGL_debug_renderer_info')) {
+              return [...list, 'WEBGL_debug_renderer_info'];
+            }
+            return list;
+          };
+        };
+
+        if (typeof WebGLRenderingContext !== 'undefined') {
+          overrideProto(WebGLRenderingContext.prototype);
+        }
+        if (typeof WebGL2RenderingContext !== 'undefined') {
+          overrideProto(WebGL2RenderingContext.prototype);
+        }
+      } catch (e) {}
+    })();`);
     
     if (browserConfig.noMedia) {
       await context.route('**/*', (route) => {
@@ -132,7 +205,7 @@ async function executeWorkflow(payload) {
     }
 
     // ── Execute workflow steps recursively ──────────────────────────
-    const execResult = await executeSteps(workflow, page, context, variables, results, 0);
+    const execResult = await executeSteps(workflow, page, context, variables, results, 0, browserConfig);
     
     // Close context to finalize video writing
     let recordingInfo = null;
@@ -238,12 +311,12 @@ async function evaluateCondition(condition, page, step, vars) {
 /**
  * Execute an array of steps.
  */
-async function executeSteps(steps, page, context, variables, results, startIndex) {
+async function executeSteps(steps, page, context, variables, results, startIndex, browserConfig = {}) {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     const globalIndex = startIndex + i;
     
-    const stepResult = await executeAction(page, context, step, globalIndex, variables, results);
+    const stepResult = await executeAction(page, context, step, globalIndex, variables, results, browserConfig);
     
     if (stepResult && stepResult.error) {
       return { success: false, error: stepResult.error, failedAtIndex: globalIndex };
@@ -255,7 +328,7 @@ async function executeSteps(steps, page, context, variables, results, startIndex
 /**
  * Execute a single workflow action.
  */
-async function executeAction(page, context, rawStep, index, variables, results) {
+async function executeAction(page, context, rawStep, index, variables, results, browserConfig = {}) {
   const step = interpolateStep(rawStep, variables);
   const { action, selector, value } = step;
   const timeout = config.actionTimeout;
@@ -294,7 +367,7 @@ async function executeAction(page, context, rawStep, index, variables, results) 
         
         const branch = isTrue ? step.workflow : step.else;
         if (branch && branch.length > 0) {
-           const subRes = await executeSteps(branch, page, context, variables, results, index + 1);
+           const subRes = await executeSteps(branch, page, context, variables, results, index + 1, browserConfig);
            if (!subRes.success) return { error: subRes.error };
         }
         break;
@@ -316,7 +389,7 @@ async function executeAction(page, context, rawStep, index, variables, results) 
           }
           
           variables['_index'] = iterations;
-          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (iterations * step.workflow.length));
+          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (iterations * step.workflow.length), browserConfig);
           if (!subRes.success) return { error: subRes.error };
           iterations++;
         }
@@ -335,7 +408,7 @@ async function executeAction(page, context, rawStep, index, variables, results) 
           variables['_index'] = i;
           variables['_selector'] = `${selector} >> nth=${i}`;
           
-          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (i * step.workflow.length));
+          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (i * step.workflow.length), browserConfig);
           if (!subRes.success) return { error: subRes.error };
         }
         
@@ -356,21 +429,36 @@ async function executeAction(page, context, rawStep, index, variables, results) 
         break;
       }
 
-      // ── Interactions ────────────────────────────────────────────────
+      // ── Interactions (Human-like physics & Ghost cursor) ─────────────
       case "click": {
-        await page.locator(selector).click({ timeout });
+        if (step.instant || browserConfig.humanize === false) {
+          await page.locator(selector).click({ timeout });
+        } else {
+          await humanClick(page, selector, timeout);
+        }
         results.push({ action, index, data: null });
         break;
       }
 
       case "dblclick": {
-        await page.locator(selector).dblclick({ timeout });
+        if (step.instant || browserConfig.humanize === false) {
+          await page.locator(selector).dblclick({ timeout });
+        } else {
+          await humanClick(page, selector, timeout);
+          await page.mouse.down();
+          await page.waitForTimeout(40);
+          await page.mouse.up();
+        }
         results.push({ action, index, data: null });
         break;
       }
 
       case "type": {
-        await page.locator(selector).fill(value, { timeout });
+        if (step.instant || browserConfig.humanize === false) {
+          await page.locator(selector).fill(value, { timeout });
+        } else {
+          await humanType(page, selector, value, timeout);
+        }
         results.push({ action, index, data: null });
         break;
       }
@@ -394,7 +482,11 @@ async function executeAction(page, context, rawStep, index, variables, results) 
       }
 
       case "hover": {
-        await page.locator(selector).hover({ timeout });
+        if (step.instant || browserConfig.humanize === false) {
+          await page.locator(selector).hover({ timeout });
+        } else {
+          await humanHover(page, selector, timeout);
+        }
         results.push({ action, index, data: null });
         break;
       }

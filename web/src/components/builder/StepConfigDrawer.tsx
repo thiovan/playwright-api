@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, X, Sliders, Info, HelpCircle } from 'lucide-react';
+import { Trash2, X, Sliders, Info, HelpCircle, Zap } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
 import { Switch } from '../ui/Switch';
@@ -82,6 +82,24 @@ export function StepConfigDrawer({
             <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
               Mendukung selector CSS/XPath biasa atau variabel seperti <code className="text-primary font-mono">&#123;&#123;_selector&#125;&#125;</code> (saat di dalam loop elements) atau <code className="text-primary font-mono">&#123;&#123;btnSelector&#125;&#125;</code>.
             </p>
+          </div>
+        )}
+
+        {/* Instant Execution Toggle */}
+        {['click', 'dblclick', 'type', 'hover'].includes(action) && (
+          <div className="flex items-center justify-between p-2.5 rounded-lg border border-border/80 bg-muted/20">
+            <div className="space-y-0.5 pr-2">
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber-500" /> Instant Mode (instant: true)
+              </span>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Bypass human cursor & typing jitter untuk langkah ini saja (0ms direct click/fill).
+              </p>
+            </div>
+            <Switch
+              checked={Boolean(data.instant)}
+              onCheckedChange={(val) => handleChange('instant', val ? true : undefined)}
+            />
           </div>
         )}
 

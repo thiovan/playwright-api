@@ -189,6 +189,7 @@ async function saveTemplate(payload) {
     tags: Array.isArray(payload.tags) ? payload.tags : ['Workflow'],
     workflow: payload.workflow || [],
     graph: payload.graph || { nodes: [], edges: [] },
+    config: payload.config || (existing ? existing.config : undefined),
     createdAt: existing ? existing.createdAt : now,
     updatedAt: now,
   };

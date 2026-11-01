@@ -64,12 +64,30 @@ export interface ApiKey {
   rawKey?: string;
 }
 
+export interface WorkflowConfig {
+  headless?: boolean;
+  recordVideo?: boolean;
+  noMedia?: boolean;
+  debug?: boolean;
+  humanize?: boolean;
+  gpuVendor?: string;
+  gpuRenderer?: string;
+  viewport?: { width: number; height: number };
+  userAgent?: string;
+  proxy?: {
+    server?: string;
+    username?: string;
+    password?: string;
+  };
+}
+
 export interface WorkflowTemplate {
   id: string;
   name: string;
   description: string;
   tags: string[];
   workflow: any[];
+  config?: WorkflowConfig;
   graph?: {
     nodes: any[];
     edges: any[];

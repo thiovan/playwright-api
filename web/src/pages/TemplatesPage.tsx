@@ -49,7 +49,7 @@ export function TemplatesPage({ onLoadTemplateToBuilder, onNavigate }: Templates
 
   const copyWorkflowJson = (tpl: WorkflowTemplate) => {
     const payload = {
-      config: { headless: true, viewport: { width: 1280, height: 720 } },
+      config: tpl.config || { headless: true, viewport: { width: 1280, height: 720 } },
       workflow: tpl.workflow,
     };
     navigator.clipboard.writeText(JSON.stringify(payload, null, 2));

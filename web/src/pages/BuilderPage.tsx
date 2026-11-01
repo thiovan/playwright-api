@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -28,6 +28,10 @@ import { CustomStepNode } from '../components/builder/CustomStepNode';
 import { ActionPalette } from '../components/builder/ActionPalette';
 import { StepConfigDrawer } from '../components/builder/StepConfigDrawer';
 import { RunnerModal } from '../components/builder/RunnerModal';
+import {
+  WorkflowConfigModal,
+  DEFAULT_WORKFLOW_CONFIG,
+} from '../components/builder/WorkflowConfigModal';
 import { graphToWorkflow, workflowToGraph } from '../components/builder/serializer';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -41,7 +45,7 @@ import {
 } from '../components/ui/Dialog';
 import { api } from '../lib/api';
 import { useToast, useConfirm } from '../context/NotificationContext';
-import type { WorkflowTemplate } from '../types';
+import type { WorkflowTemplate, WorkflowConfig } from '../types';
 
 const nodeTypes = {
   actionNode: CustomStepNode,
@@ -72,6 +76,12 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
+  // Workflow Runtime Configuration State
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [workflowConfig, setWorkflowConfig] = useState<WorkflowConfig>(
+    activeTemplate?.config || DEFAULT_WORKFLOW_CONFIG
+  );
+
   // Modals
   const [runnerOpen, setRunnerOpen] = useState(false);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
@@ -81,6 +91,17 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
 
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (activeTemplate) {
+      setTemplateName(activeTemplate.name || '');
+      setTemplateDesc(activeTemplate.description || '');
+      setTemplateTags(activeTemplate.tags?.join(', ') || 'Custom, Automation');
+      if (activeTemplate.config) {
+        setWorkflowConfig(activeTemplate.config);
+      }
+    }
+  }, [activeTemplate]);
 
   // Connect edges
   const onConnect = useCallback(
@@ -219,13 +240,23 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
   const compiledWorkflow = graphToWorkflow(nodes, edges);
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
-  // Export JSON
+  // Export JSON with current active config
   const handleExportJson = () => {
+    const cleanConfig: any = {
+      headless: workflowConfig.headless ?? true,
+      viewport: workflowConfig.viewport || { width: 1280, height: 720 },
+    };
+    if (workflowConfig.recordVideo) cleanConfig.recordVideo = true;
+    if (workflowConfig.noMedia) cleanConfig.noMedia = true;
+    if (workflowConfig.debug === false) cleanConfig.debug = false;
+    if (workflowConfig.humanize !== undefined) cleanConfig.humanize = workflowConfig.humanize;
+    if (workflowConfig.gpuVendor) cleanConfig.gpuVendor = workflowConfig.gpuVendor;
+    if (workflowConfig.gpuRenderer) cleanConfig.gpuRenderer = workflowConfig.gpuRenderer;
+    if (workflowConfig.userAgent) cleanConfig.userAgent = workflowConfig.userAgent;
+    if (workflowConfig.proxy?.server) cleanConfig.proxy = workflowConfig.proxy;
+
     const payload = {
-      config: {
-        headless: true,
-        viewport: { width: 1280, height: 720 },
-      },
+      config: cleanConfig,
       workflow: compiledWorkflow,
     };
     navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
@@ -234,7 +265,7 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Save template
+  // Save template with config
   const handleSaveTemplate = async () => {
     if (!templateName.trim()) return;
     try {
@@ -244,6 +275,7 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
         description: templateDesc,
         tags: templateTags.split(',').map((t) => t.trim()).filter(Boolean),
         workflow: compiledWorkflow,
+        config: workflowConfig,
         graph: { nodes, edges },
       });
       setSaveModalOpen(false);
@@ -265,6 +297,10 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
         if (!wf || !Array.isArray(wf)) {
           toast.error('Invalid JSON: Must contain a "workflow" array or be an array of steps.');
           return;
+        }
+        if (parsed.config && typeof parsed.config === 'object') {
+          setWorkflowConfig(parsed.config);
+          toast.info('Loaded workflow config from JSON');
         }
         const g = workflowToGraph(wf);
         setNodes(g.nodes);
@@ -290,6 +326,7 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
     setNodes([]);
     setEdges([]);
     setSelectedNodeId(null);
+    setWorkflowConfig(DEFAULT_WORKFLOW_CONFIG);
     toast.info('Canvas cleared');
   };
 
@@ -304,6 +341,16 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
             className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
           >
             <Play className="w-3.5 h-3.5 mr-1.5 fill-current" /> Run / Test
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs"
+            onClick={() => setConfigModalOpen(true)}
+            title="Configure browser & runtime parameters"
+          >
+            <Sliders className="w-3.5 h-3.5 mr-1.5" /> Config
           </Button>
 
           <Button
@@ -407,6 +454,18 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
         onClose={() => setRunnerOpen(false)}
         workflow={compiledWorkflow}
         onOpenVnc={onOpenVnc}
+        initialConfig={workflowConfig}
+      />
+
+      {/* Global Workflow Runtime Config Modal */}
+      <WorkflowConfigModal
+        open={configModalOpen}
+        onOpenChange={setConfigModalOpen}
+        config={workflowConfig}
+        onSave={(newCfg) => {
+          setWorkflowConfig(newCfg);
+          toast.success('Workflow configuration saved');
+        }}
       />
 
       {/* Save Template Modal */}
@@ -471,4 +530,3 @@ export function BuilderPage(props: BuilderPageProps) {
     </ReactFlowProvider>
   );
 }
-

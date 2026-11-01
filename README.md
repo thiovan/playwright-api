@@ -1,24 +1,27 @@
 # 🎭 Playwright API Automation Engine & Modern Dashboard
 
-Node.js REST API and interactive automation workspace powered by Playwright and BullMQ. Features a modern Shadcn UI dashboard, visual drag-and-drop workflow builder, API key management, workflow templates, cron scheduler, debugging screen recordings (.webm), and remote browser visual inspection via noVNC.
+Node.js REST API and interactive automation workspace powered by Playwright and BullMQ. Features a modern Shadcn UI dashboard, visual drag-and-drop workflow builder, API key management, workflow templates, cron scheduler, debugging screen recordings (.webm), remote browser visual inspection via noVNC, and advanced anti-bot stealth evasions (WebGL GPU spoofing & human cursor physics).
 
 ---
 
 ## ✨ Features
 
 - **Modern Shadcn UI Dashboard** — Web console accessible at `/dashboard` with dark-mode aesthetic, metrics, BullMQ telemetry, and real-time execution inspect modal.
-- **Visual Drag-and-Drop Workflow Builder** — Canvas powered by `@xyflow/react` to design, test, run, and export complex multi-step browser automations visually.
+- **Visual Drag-and-Drop Workflow Builder** — Canvas powered by `@xyflow/react` with visual nodes, edge routing, runtime configuration modal, template saving, and JSON import/export.
+- **Advanced Anti-Bot Evasions & Stealth**:
+  - **WebGL & GPU Spoofing** — Eliminates Docker `llvmpipe` / `SwiftShader` signatures by spoofing `UNMASKED_VENDOR_WEBGL` (NVIDIA) and `UNMASKED_RENDERER_WEBGL` (GeForce RTX 3060) with valid `[native code]` extension descriptors.
+  - **Ghost Cursor Simulation** — Moves cursor using randomized Cubic Bézier curves, natural hand arcs, non-linear velocity easing, and human reaction dwell times (40–100ms).
+  - **Human Typing Jitter** — Types keystroke-by-keystroke with randomized 50–150ms intervals and natural punctuation pauses.
+  - **Playwright Stealth Integration** — Evades baseline bot detection checks (`navigator.webdriver`, `chrome.runtime`, permissions).
 - **Admin Authentication & Session Security** — Dashboard protected by PBKDF2 hashed credentials and Bearer token sessions (default credentials: `admin` / `admin`).
 - **External API Key Management** — Generate, toggle, and revoke `ak_live_*` API keys with SHA-256 validation for third-party application integration.
-- **Workflow Template Library** — Save, tag, and reuse battle-tested automation routines directly into the builder.
+- **Workflow Template Library** — Save, tag, and reuse battle-tested automation routines directly into the builder with persistent execution parameters.
 - **Scheduled Automated Runs** — Set cron expressions (e.g. `0 9 * * 1-5`) or interval timers to execute workflows automatically in the background.
 - **Debugging Screen Recordings (.webm)** — Automatically captures video of workflow executions when `headless: false` or `recordVideo: true`, with inline playback and downloads.
-- **Live Browser Stream (noVNC)** — Real-time remote Xvfb display mirroring on port `8080` to watch visible browser executions inside Docker.
-- **Quick Setup & Infrastructure Diagnostics** — Live Redis connection latency tester and `.env` configuration manager within the dashboard.
-- **Sync & Async Execution** — Choose between immediate synchronous responses or asynchronous BullMQ queues with webhook callbacks.
+- **Live Browser Stream (noVNC)** — Real-time remote Xvfb display mirroring on port `8080` to watch visible browser executions inside Docker, with standby guidance banners and direct toolbar links.
+- **Production-Ready Docker Orchestration** — Self-healing Docker Compose stack with native healthchecks, dynamic service resolution, and unhandled Redis crash protection.
+- **Sync & Async Execution** — Choose between immediate synchronous responses (`/api/v1/sync`) or asynchronous BullMQ queues with webhook callbacks (`/api/v1/async`).
 - **30 Workflow Actions** — Navigation, form filling, keystrokes, mouse events, cookies, DOM queries, JS evaluations, runtime variables, and control flow loops/conditions.
-- **Stealth Mode** — Integrated `puppeteer-extra-plugin-stealth` to evade bot detection (Cloudflare, Datadome, PerimeterX).
-- **Multi-Instance Concurrency** — Scale parallel headless browsers with configurable concurrency limits.
 
 ---
 
@@ -103,17 +106,24 @@ npm run dev
 {
   "config": {
     "headless": true,
-    "recordVideo": true,
+    "recordVideo": false,
     "noMedia": false,
     "debug": true,
+    "humanize": true,
+    "gpuVendor": "Google Inc. (NVIDIA)",
+    "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
     "viewport": { "width": 1280, "height": 720 },
     "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "proxy": {
-      "server": "http://proxy.example.com:8000"
+      "server": "http://proxy.example.com:8000",
+      "username": "user",
+      "password": "pwd"
     }
   },
   "workflow": [
     { "action": "goto", "value": "https://example.com" },
+    { "action": "type", "selector": "#search", "value": "Playwright Automation" },
+    { "action": "click", "selector": "button[type='submit']" },
     { "action": "screenshot" }
   ]
 }
@@ -125,11 +135,17 @@ npm run dev
 |---|---|---|---|
 | `headless` | `boolean` | `true` | When `false`, displays browser in noVNC (Docker) or desktop (local). |
 | `recordVideo` | `boolean` | `false` | Captures WebM video of entire run (auto-enabled when `headless: false`). |
-| `noMedia` | `boolean` | `false` | Blocks images, fonts, and media streams to boost execution speed. |
-| `debug` | `boolean` | `true` | Includes individual step traces and variable states in the output. |
-| `viewport` | `object` | `1280x720`| Viewport dimensions (`width`, `height`). |
+| `noMedia` | `boolean` | `false` | Blocks images, fonts, and media streams to boost scraping speed 3-5x. |
+| `debug` | `boolean` | `true` | Includes individual step traces and internal variables (`_`) in output. |
+| `humanize` | `boolean` | `true` | Enables Bézier mouse curves and 50–150ms human typing jitter. |
+| `gpuVendor` | `string` | `"Google Inc. (NVIDIA)"` | Spoofed WebGL `UNMASKED_VENDOR_WEBGL` string. |
+| `gpuRenderer`| `string` | `"ANGLE (NVIDIA, ... RTX 3060 ...)"` | Spoofed WebGL `UNMASKED_RENDERER_WEBGL` string. |
+| `viewport` | `object` | `1280x720` | Viewport dimensions (`width`, `height`). |
 | `userAgent` | `string` | Playwright default | Custom HTTP User-Agent header. |
 | `proxy` | `object` | `null` | Proxy configuration (`server`, `username`, `password`). |
+
+> **Tip for Step-Level Instant Speed:**
+> If you need specific steps to run with instant zero-delay execution while keeping `humanize: true` globally, add `"instant": true` to the step (e.g. `{"action": "type", "selector": "#token", "value": "12345", "instant": true}`).
 
 ---
 
@@ -141,14 +157,14 @@ npm run dev
 - `wait` (`value: ms`) — Pause execution for specified milliseconds.
 - `wait-for` (`selector`) — Wait for selector to be attached to DOM.
 
-### Form & User Interaction
-- `click` (`selector`) — Click element.
-- `dblclick` (`selector`) — Double-click element.
-- `type` (`selector`, `value`) — Input text into form field.
+### Form & User Interaction (Human Physics Enabled)
+- `click` (`selector`, `instant`) — Smooth Bézier curve mouse travel and natural click dwell.
+- `dblclick` (`selector`, `instant`) — Humanized double-click sequence.
+- `type` (`selector`, `value`, `instant`) — Randomized 50–150ms keystroke jitter with punctuation pauses.
 - `select` (`selector`, `value`) — Choose option from dropdown.
 - `check` (`selector`) — Check checkbox or radio.
 - `uncheck` (`selector`) — Uncheck checkbox.
-- `hover` (`selector`) — Hover over target element.
+- `hover` (`selector`, `instant`) — Move cursor smoothly along Bézier curve to target element.
 - `drag` (`selector`, `value: targetSelector`) — Drag source element onto target.
 - `upload` (`selector`, `value: filePath`) — Attach file to file input.
 
@@ -205,15 +221,16 @@ curl -X POST http://localhost:3000/api/v1/sync \
 |---|---|---|
 | `PORT` | `3000` | Express server port |
 | `NODE_ENV` | `production` | Node environment |
-| `REDIS_HOST` | `localhost` | Redis server hostname |
+| `REDIS_HOST` | `redis` (docker) / `localhost` | Redis server hostname |
 | `REDIS_PORT` | `6379` | Redis server port |
 | `REDIS_PASSWORD` | *(empty)* | Redis password authentication |
 | `REDIS_TLS` | `false` | Enable TLS/SSL connection to Redis |
 | `CONCURRENCY` | `3` | Number of simultaneous BullMQ browser workers |
 | `ACTION_TIMEOUT` | `60000` | Default timeout for individual Playwright actions (ms) |
 | `WORKFLOW_TIMEOUT`| `300000` | Max total duration for a workflow execution (ms) |
-| `RECORDINGS_DIR` | `./recordings` | Directory storing screen recording files (.webm) |
+| `RECORDINGS_DIR` | `/app/recordings` | Directory storing screen recording files (.webm) |
 | `RECORDINGS_TTL` | `86400` | Time to keep recordings before cleanup (seconds) |
+| `VNC_HOST` | `localhost` | noVNC host interface |
 | `VNC_PORT` | `8080` | noVNC web streaming port |
 | `DASHBOARD_DEFAULT_USERNAME` | `admin` | Initial admin username |
 | `DASHBOARD_DEFAULT_PASSWORD` | `admin` | Initial admin password |
@@ -227,12 +244,13 @@ playwright-api/
 ├── src/
 │   ├── index.js             # Application entrypoint (server + BullMQ worker)
 │   ├── server.js            # Express routes, Swagger UI, and static hosting
-│   ├── executor.js          # Playwright action runner and video recorder
+│   ├── executor.js          # Playwright action runner and WebGL spoofer
+│   ├── humanCursor.js       # Bézier curve trajectory & randomized typing jitter
 │   ├── queue.js             # BullMQ queue producer and consumer
 │   ├── history.js           # Redis execution telemetry & trace storage
 │   ├── apiKeyManager.js     # API Key generation, hashing, and authorization
 │   ├── authManager.js       # Dashboard admin sessions and PBKDF2 auth
-│   ├── templateManager.js   # Workflow template persistence
+│   ├── templateManager.js   # Workflow template persistence with config
 │   ├── schedulerManager.js  # Recurring cron job execution engine
 │   ├── setupManager.js      # Onboarding and environment editor
 │   ├── validator.js         # JSON payload validation rules
@@ -240,16 +258,19 @@ playwright-api/
 │   └── dashboard.js         # Dashboard REST APIs and VNC connectivity probe
 ├── web/                     # Modern React + Vite + Shadcn UI Frontend
 │   ├── src/
-│   │   ├── components/      # UI components (Flow builder, VNC viewer, Modals)
-│   │   ├── pages/           # Overview, Builder, Queue, Keys, Schedules, Setup
+│   │   ├── components/
+│   │   │   ├── builder/     # ActionPalette, CustomNode, Drawer, RunnerModal, WorkflowConfigModal
+│   │   │   ├── ui/          # Button, Input, Switch, Dialog, Card, Badge
+│   │   │   └── Layout.tsx   # Dashboard layout, navigation bar, VNC status
+│   │   ├── pages/           # Overview, Builder, Queue, Keys, Schedules, Templates, Vnc, Settings
 │   │   └── lib/             # API client and utility helpers
 │   ├── package.json
 │   └── vite.config.ts
 ├── docs/
 │   └── openapi.yaml         # OpenAPI 3.0 specification
 ├── recordings/              # WebM execution recordings
-├── Dockerfile               # Container build definition (Noble + Playwright + Xvfb)
-├── docker-compose.yml       # Production stack orchestrator
+├── Dockerfile               # Multi-stage image build (Vite + Noble + Playwright + Xvfb)
+├── docker-compose.yml       # Production stack orchestrator with healthchecks
 └── entrypoint.sh            # Container init script (Xvfb + x11vnc + noVNC)
 ```
 
@@ -257,10 +278,14 @@ playwright-api/
 
 ## 🧪 Automated Testing
 
-Run the automated test suite covering API keys, templates, scheduler, setup manager, admin auth, and server integration:
+Run the automated test suite covering API keys, templates, scheduler, setup manager, admin auth, server integration, and stealth evasions:
 
 ```bash
+# Full test suite
 npm test
+
+# Stealth & human physics verification test
+node tests/test-stealth.js
 ```
 
 ---
