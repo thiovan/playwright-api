@@ -21,8 +21,8 @@ const config = {
 
   // Dashboard Authentication
   auth: {
-    adminUser: process.env.DASHBOARD_ADMIN_USER || 'admin',
-    adminPass: process.env.DASHBOARD_ADMIN_PASS || 'admin',
+    adminUser: process.env.DASHBOARD_ADMIN_USER || process.env.DASHBOARD_DEFAULT_USERNAME || 'admin',
+    adminPass: process.env.DASHBOARD_ADMIN_PASS || process.env.DASHBOARD_DEFAULT_PASSWORD || 'admin',
     sessionTTL: parseInt(process.env.SESSION_TTL, 10) || 604800, // 7 days in seconds
   },
 

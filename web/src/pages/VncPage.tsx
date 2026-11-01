@@ -78,6 +78,18 @@ export function VncPage() {
         </div>
       </div>
 
+      {/* Standby & Headless Guide Banner */}
+      {active === true && (
+        <div className="px-6 py-2 bg-muted/40 border-b border-border/80 flex items-center justify-between text-xs text-muted-foreground select-none">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span>
+              <strong>Stream Aktif:</strong> Layar hitam/blank adalah kondisi normal saat idle (standby). Jendela browser Chromium otomatis tampil di sini saat menjalankan workflow dengan mode <code className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[11px] text-primary">headless: false</code>.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Main View Area */}
       <div className="flex-1 bg-black relative flex flex-col items-center justify-center">
         {active === false && !forceIframe ? (

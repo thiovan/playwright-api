@@ -23,6 +23,9 @@ function getRedis() {
       maxRetriesPerRequest: null,
       lazyConnect: true,
     });
+    redis.on('error', (err) => {
+      console.warn(`[History] Redis error: ${err.message}`);
+    });
     redis.connect().catch((err) => {
       console.warn(`[History] Redis connection failed: ${err.message}`);
     });

@@ -111,9 +111,9 @@ export function RequestDetailModal({ requestId, onClose, onOpenVnc }: RequestDet
               </Button>
             )}
 
-            {data?.status === 'running' && data?.config?.headless === false && onOpenVnc && (
-              <Button size="sm" variant="outline" className="text-primary" onClick={onOpenVnc}>
-                <Monitor className="w-3.5 h-3.5 mr-1 text-primary" /> View Live VNC
+            {data?.status === 'running' && onOpenVnc && (
+              <Button size="sm" variant="outline" className="text-sky-400 border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20" onClick={onOpenVnc}>
+                <Monitor className="w-3.5 h-3.5 mr-1 text-sky-400" /> View Live VNC
               </Button>
             )}
             <Button size="sm" variant="ghost" onClick={onClose}>

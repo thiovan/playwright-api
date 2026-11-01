@@ -23,6 +23,9 @@ function getClient() {
       maxRetriesPerRequest: null,
       lazyConnect: true,
     });
+    redisClient.on('error', (err) => {
+      console.warn('[SchedulerManager] Redis client error:', err.message);
+    });
     redisClient.connect().catch((err) => {
       console.warn('[SchedulerManager] Redis connection warning:', err.message);
     });
@@ -40,6 +43,9 @@ function getQueue() {
         tls: config.redis.tls,
         maxRetriesPerRequest: null,
       },
+    });
+    workflowQueue.on('error', (err) => {
+      console.warn('[SchedulerManager] BullMQ queue error:', err.message);
     });
   }
   return workflowQueue;

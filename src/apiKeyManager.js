@@ -22,6 +22,9 @@ function getClient() {
       maxRetriesPerRequest: null,
       lazyConnect: true,
     });
+    redisClient.on('error', (err) => {
+      console.warn('[ApiKeyManager] Redis client error:', err.message);
+    });
     redisClient.connect().catch((err) => {
       console.warn('[ApiKeyManager] Redis connection warning:', err.message);
     });

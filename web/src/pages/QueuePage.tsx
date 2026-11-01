@@ -81,9 +81,20 @@ export function QueuePage({ onSelectRequest, onOpenVnc }: QueuePageProps) {
             Browse real-time BullMQ queues and historical execution traces
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={loadData} disabled={loading}>
-          <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-sky-400 border-sky-500/30 hover:bg-sky-500/10 hover:text-sky-300"
+            onClick={onOpenVnc}
+            title="Open Live VNC stream viewer"
+          >
+            <Monitor className="w-3.5 h-3.5 mr-1.5" /> View Live VNC
+          </Button>
+          <Button size="sm" variant="outline" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Queue Status Pills */}
@@ -207,14 +218,15 @@ export function QueuePage({ onSelectRequest, onOpenVnc }: QueuePageProps) {
                               <Video className="w-3 h-3 mr-1" /> Video
                             </Button>
                           )}
-                          {req.status === 'running' && req.config?.headless === false && (
+                          {req.status === 'running' && (
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-6 px-2 text-[11px] text-sky-400"
+                              className="h-6 px-2 text-[11px] text-sky-400 border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 animate-pulse"
                               onClick={onOpenVnc}
+                              title="Watch live in VNC viewer"
                             >
-                              <Monitor className="w-3 h-3 mr-1" /> VNC
+                              <Monitor className="w-3 h-3 mr-1" /> Live VNC
                             </Button>
                           )}
                           <Button

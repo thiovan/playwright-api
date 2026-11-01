@@ -30,6 +30,9 @@ function getQueue() {
         maxRetriesPerRequest: null,
       },
     });
+    workflowQueue.on('error', (err) => {
+      console.warn(`[DashboardQueue] Redis error: ${err.message}`);
+    });
   }
   return workflowQueue;
 }

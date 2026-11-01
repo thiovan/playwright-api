@@ -1,8 +1,6 @@
 services:
-  # ── Redis (Message Broker & State Store) ──────────────────────────────────
   redis:
     image: redis:alpine
-    container_name: playwright-redis
     ports:
       - "6379:6379"
     volumes:
@@ -14,12 +12,10 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Playwright API + Worker + Shadcn Dashboard ─────────────────────────────
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: playwright-api
     ports:
       - "3000:3000"
       - "8080:8080"
@@ -48,6 +44,12 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/v1/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
 volumes:

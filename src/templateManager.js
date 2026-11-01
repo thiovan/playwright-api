@@ -20,6 +20,9 @@ function getClient() {
       maxRetriesPerRequest: null,
       lazyConnect: true,
     });
+    redisClient.on('error', (err) => {
+      console.warn('[TemplateManager] Redis client error:', err.message);
+    });
     redisClient.connect().catch((err) => {
       console.warn('[TemplateManager] Redis connection warning:', err.message);
     });
