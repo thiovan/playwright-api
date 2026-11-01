@@ -1,0 +1,137 @@
+{
+  "config": {
+    "headless": false,
+    "recordVideo": false,
+    "noMedia": false,
+    "debug": false,
+    "humanize": true,
+    "workflowTimeout": 300000
+  },
+  "workflow": [
+    {
+      "action": "goto",
+      "value": "https://www.tiktok.com/"
+    },
+    {
+      "action": "cookie-set",
+      "name": "sessionid",
+      "value": "CHANGE_WITH_YOUR_TIKTOK_SESSIONID"
+    },
+    {
+      "action": "cookie-set",
+      "name": "sessionid_ss",
+      "value": "CHANGE_WITH_YOUR_TIKTOK_SESSIONID_SS"
+    },
+    {
+      "action": "cookie-set",
+      "name": "ttwid",
+      "value": "CHANGE_WITH_YOUR_TIKTOK_TTWID"
+    },
+    {
+      "action": "goto",
+      "value": "https://www.tiktok.com/@semarangpemkot"
+    },
+    {
+      "action": "wait",
+      "value": 4000
+    },
+    {
+      "action": "if",
+      "condition": "selector-exists",
+      "selector": "[data-e2e='modal-close-inner-button']",
+      "workflow": [
+        {
+          "action": "click",
+          "selector": "[data-e2e='modal-close-inner-button']"
+        }
+      ]
+    },
+    {
+      "action": "if",
+      "condition": "selector-exists",
+      "selector": "[data-e2e='user-post-item']",
+      "workflow": [
+        {
+          "action": "loop-elements",
+          "selector": "[data-e2e='user-post-item']",
+          "max": 3,
+          "workflow": [
+            {
+              "action": "get-attribute",
+              "selector": "{{_selector}} >> a",
+              "value": "href",
+              "name": "post_url"
+            },
+            {
+              "action": "click",
+              "selector": "{{_selector}}"
+            },
+            {
+              "action": "wait",
+              "value": 4000
+            },
+            {
+              "action": "mousewheel",
+              "dx": 0,
+              "dy": 600
+            },
+            {
+              "action": "wait",
+              "value": 1500
+            },
+            {
+              "action": "if",
+              "condition": "selector-exists",
+              "selector": "[data-e2e='comment-level-1']",
+              "workflow": [
+                {
+                  "action": "loop-elements",
+                  "selector": "div[class*='DivCommentContentContainer']",
+                  "max": 10,
+                  "workflow": [
+                    {
+                      "action": "get-text",
+                      "selector": "{{_selector}} >> a[class*='UserLinkName']",
+                      "name": "username"
+                    },
+                    {
+                      "action": "get-attribute",
+                      "selector": "{{_selector}} >> a[class*='UserLinkName']",
+                      "value": "href",
+                      "name": "user_profile"
+                    },
+                    {
+                      "action": "get-text",
+                      "selector": "{{_selector}} >> [data-e2e='comment-level-1']",
+                      "name": "comment"
+                    },
+                    {
+                      "action": "var-set",
+                      "name": "data",
+                      "push": true,
+                      "value": {
+                        "post_url": "{{post_url}}",
+                        "username": "{{username}}",
+                        "user_profile": "{{user_profile}}",
+                        "comment": "{{comment}}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "action": "click",
+              "selector": "button[data-e2e='browse-close']"
+            },
+            {
+              "action": "wait",
+              "value": 1500
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

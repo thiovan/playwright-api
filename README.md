@@ -110,6 +110,7 @@ npm run dev
     "noMedia": false,
     "debug": true,
     "humanize": true,
+    "showCursor": true,
     "workflowTimeout": 300000,
     "gpuVendor": "Google Inc. (NVIDIA)",
     "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
@@ -139,6 +140,8 @@ npm run dev
 | `noMedia` | `boolean` | `false` | Blocks images, fonts, and media streams to boost scraping speed 3-5x. |
 | `debug` | `boolean` | `true` | Includes individual step traces and internal variables (`_`) in output. |
 | `humanize` | `boolean` | `true` | Enables Bézier mouse curves and 50–150ms human typing jitter. |
+| `showCursor` | `boolean` | `true` | Renders visual cursor & click ripples in `recordVideo` and noVNC stream. |
+| `workflowTimeout` | `number` | `300000` | Max total duration for execution in ms (`0` = disabled). |
 | `gpuVendor` | `string` | `"Google Inc. (NVIDIA)"` | Spoofed WebGL `UNMASKED_VENDOR_WEBGL` string. |
 | `gpuRenderer`| `string` | `"ANGLE (NVIDIA, ... RTX 3060 ...)"` | Spoofed WebGL `UNMASKED_RENDERER_WEBGL` string. |
 | `viewport` | `object` | `1280x720` | Viewport dimensions (`width`, `height`). |

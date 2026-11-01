@@ -70,6 +70,7 @@ export interface WorkflowConfig {
   noMedia?: boolean;
   debug?: boolean;
   humanize?: boolean;
+  showCursor?: boolean;
   gpuVendor?: string;
   gpuRenderer?: string;
   workflowTimeout?: number;

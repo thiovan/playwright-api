@@ -40,6 +40,7 @@ export function RunnerModal({ open, onClose, workflow, onOpenVnc, initialConfig 
   const [noMedia, setNoMedia] = useState(false);
   const [debug, setDebug] = useState(true);
   const [humanize, setHumanize] = useState(true);
+  const [showCursor, setShowCursor] = useState(true);
   const [gpuVendor, setGpuVendor] = useState('Google Inc. (NVIDIA)');
   const [gpuRenderer, setGpuRenderer] = useState('ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)');
   const [workflowTimeout, setWorkflowTimeout] = useState<number>(300000);
@@ -69,6 +70,7 @@ export function RunnerModal({ open, onClose, workflow, onOpenVnc, initialConfig 
         setNoMedia(Boolean(initialConfig.noMedia));
         setDebug(initialConfig.debug !== false);
         setHumanize(initialConfig.humanize !== false);
+        setShowCursor(initialConfig.showCursor !== false);
         setGpuVendor(initialConfig.gpuVendor !== undefined ? initialConfig.gpuVendor : 'Google Inc. (NVIDIA)');
         setGpuRenderer(initialConfig.gpuRenderer !== undefined ? initialConfig.gpuRenderer : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)');
         setWorkflowTimeout(initialConfig.workflowTimeout !== undefined ? initialConfig.workflowTimeout : 300000);
@@ -110,6 +112,7 @@ export function RunnerModal({ open, onClose, workflow, onOpenVnc, initialConfig 
         noMedia,
         debug,
         humanize,
+        showCursor,
         workflowTimeout: workflowTimeout ? Number(workflowTimeout) : undefined,
         gpuVendor: gpuVendor.trim() || undefined,
         gpuRenderer: gpuRenderer.trim() || undefined,
@@ -264,6 +267,16 @@ export function RunnerModal({ open, onClose, workflow, onOpenVnc, initialConfig 
                     <p className="text-[10px] text-muted-foreground">Bézier curve mouse trajectory and randomized 50–150ms typing delay</p>
                   </div>
                   <Switch checked={humanize} onCheckedChange={(v) => setHumanize(v)} />
+                </div>
+
+                <div className="col-span-1 sm:col-span-2 flex items-center justify-between p-2 rounded border border-border/50 bg-background/50">
+                  <div className="space-y-0.5 pr-2">
+                    <span className="font-semibold text-foreground flex items-center gap-1">
+                      <Sliders className="w-3 h-3 text-rose-500" /> Visible Mouse Cursor (showCursor)
+                    </span>
+                    <p className="text-[10px] text-muted-foreground">Renders visible red pointer & click ripple in recorded video & noVNC</p>
+                  </div>
+                  <Switch checked={showCursor} onCheckedChange={(v) => setShowCursor(v)} />
                 </div>
               </div>
 

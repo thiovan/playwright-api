@@ -187,11 +187,78 @@ async function executeWorkflow(payload) {
         }
       } catch (e) {}
     })();`);
+
+    // ── Visual Cursor Overlay (Visible in recordVideo & noVNC) ──────
+    const shouldShowCursor = browserConfig.showCursor !== false;
+    if (shouldShowCursor) {
+      await context.addInitScript(`(() => {
+        try {
+          const createCursor = () => {
+            if (document.getElementById('__pw_cursor__')) return;
+            const target = document.body || document.documentElement;
+            if (!target) return;
+
+            const cursor = document.createElement('div');
+            cursor.id = '__pw_cursor__';
+            cursor.style.position = 'fixed';
+            cursor.style.top = '0px';
+            cursor.style.left = '0px';
+            cursor.style.width = '24px';
+            cursor.style.height = '24px';
+            cursor.style.pointerEvents = 'none';
+            cursor.style.userSelect = 'none';
+            cursor.style.zIndex = '2147483647';
+            cursor.style.transform = 'translate(-100px, -100px)';
+            cursor.style.willChange = 'transform';
+            cursor.innerHTML = \`
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); pointer-events: none;">
+                <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.85a.5.5 0 0 0-.85.36z" fill="#ff3b30" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+              </svg>
+              <div id="__pw_cursor_ripple__" style="position: absolute; top: 0; left: 0; width: 22px; height: 22px; border-radius: 50%; background: rgba(255, 59, 48, 0.45); transform: scale(0); opacity: 0; transition: transform 0.22s ease-out, opacity 0.22s ease-out; pointer-events: none;"></div>
+            \`;
+            target.appendChild(cursor);
+          };
+
+          window.addEventListener('mousemove', (e) => {
+            let cursor = document.getElementById('__pw_cursor__');
+            if (!cursor) {
+              createCursor();
+              cursor = document.getElementById('__pw_cursor__');
+            }
+            if (cursor) {
+              cursor.style.transform = 'translate(' + e.clientX + 'px, ' + e.clientY + 'px)';
+            }
+          }, { capture: true, passive: true });
+
+          window.addEventListener('mousedown', () => {
+            const ripple = document.getElementById('__pw_cursor_ripple__');
+            if (ripple) {
+              ripple.style.transform = 'scale(2.2)';
+              ripple.style.opacity = '1';
+            }
+          }, { capture: true, passive: true });
+
+          window.addEventListener('mouseup', () => {
+            const ripple = document.getElementById('__pw_cursor_ripple__');
+            if (ripple) {
+              ripple.style.transform = 'scale(0)';
+              ripple.style.opacity = '0';
+            }
+          }, { capture: true, passive: true });
+
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', createCursor);
+          } else {
+            createCursor();
+          }
+        } catch (e) {}
+      })();`);
+    }
     
     if (browserConfig.noMedia) {
       await context.route('**/*', (route) => {
         const type = route.request().resourceType();
-        if (['image', 'media', 'font', 'fetch'].includes(type)) {
+        if (['image', 'media', 'font'].includes(type)) {
           route.abort();
         } else {
           route.continue();

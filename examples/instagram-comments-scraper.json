@@ -1,8 +1,11 @@
 {
   "config": {
-    "headless": true,
+    "headless": false,
+    "recordVideo": false,
     "noMedia": true,
-    "debug": false
+    "debug": false,
+    "humanize": true,
+    "workflowTimeout": 300000
   },
   "workflow": [
     {

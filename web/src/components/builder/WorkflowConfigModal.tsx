@@ -19,6 +19,7 @@ export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
   noMedia: false,
   debug: true,
   humanize: true,
+  showCursor: true,
   workflowTimeout: 300000,
   gpuVendor: 'Google Inc. (NVIDIA)',
   gpuRenderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
@@ -43,6 +44,7 @@ export function WorkflowConfigModal({
         noMedia: Boolean(config.noMedia),
         debug: config.debug !== false,
         humanize: config.humanize !== false,
+        showCursor: config.showCursor !== false,
         workflowTimeout: config.workflowTimeout !== undefined ? config.workflowTimeout : 300000,
         gpuVendor: config.gpuVendor !== undefined ? config.gpuVendor : 'Google Inc. (NVIDIA)',
         gpuRenderer: config.gpuRenderer !== undefined ? config.gpuRenderer : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
@@ -75,6 +77,7 @@ export function WorkflowConfigModal({
       noMedia: localConfig.noMedia,
       debug: localConfig.debug,
       humanize: localConfig.humanize !== false,
+      showCursor: localConfig.showCursor !== false,
       workflowTimeout: localConfig.workflowTimeout ? Number(localConfig.workflowTimeout) : undefined,
       gpuVendor: localConfig.gpuVendor?.trim() || undefined,
       gpuRenderer: localConfig.gpuRenderer?.trim() || undefined,
@@ -158,6 +161,24 @@ export function WorkflowConfigModal({
               checked={Boolean(localConfig.recordVideo || !localConfig.headless)}
               disabled={!localConfig.headless}
               onCheckedChange={(val) => setLocalConfig((prev) => ({ ...prev, recordVideo: val }))}
+            />
+          </div>
+
+          <div className="h-px bg-border/50" />
+
+          {/* Show Visual Cursor */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5 pr-2">
+              <span className="font-semibold text-foreground flex items-center gap-1.5">
+                <MousePointer className="w-3.5 h-3.5 text-rose-500" /> Visible Mouse Cursor (showCursor)
+              </span>
+              <p className="text-[11px] text-muted-foreground">
+                Displays red cursor pointer & click ripple animation in recorded video (.webm) and noVNC stream.
+              </p>
+            </div>
+            <Switch
+              checked={localConfig.showCursor !== false}
+              onCheckedChange={(val) => setLocalConfig((prev) => ({ ...prev, showCursor: val }))}
             />
           </div>
 
