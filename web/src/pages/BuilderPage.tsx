@@ -250,6 +250,7 @@ function BuilderCanvas({ onOpenVnc, activeTemplate, onClearActiveTemplate }: Bui
     if (workflowConfig.noMedia) cleanConfig.noMedia = true;
     if (workflowConfig.debug === false) cleanConfig.debug = false;
     if (workflowConfig.humanize !== undefined) cleanConfig.humanize = workflowConfig.humanize;
+    if (workflowConfig.workflowTimeout !== undefined) cleanConfig.workflowTimeout = workflowConfig.workflowTimeout;
     if (workflowConfig.gpuVendor) cleanConfig.gpuVendor = workflowConfig.gpuVendor;
     if (workflowConfig.gpuRenderer) cleanConfig.gpuRenderer = workflowConfig.gpuRenderer;
     if (workflowConfig.userAgent) cleanConfig.userAgent = workflowConfig.userAgent;

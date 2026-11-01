@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sliders, Monitor, Video, Zap, Bug, Globe, Shield, RefreshCw, Cpu, MousePointer } from 'lucide-react';
+import { Sliders, Monitor, Video, Zap, Bug, Globe, Shield, RefreshCw, Cpu, MousePointer, Clock } from 'lucide-react';
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -19,6 +19,7 @@ export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
   noMedia: false,
   debug: true,
   humanize: true,
+  workflowTimeout: 300000,
   gpuVendor: 'Google Inc. (NVIDIA)',
   gpuRenderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
   viewport: { width: 1280, height: 720 },
@@ -42,6 +43,7 @@ export function WorkflowConfigModal({
         noMedia: Boolean(config.noMedia),
         debug: config.debug !== false,
         humanize: config.humanize !== false,
+        workflowTimeout: config.workflowTimeout !== undefined ? config.workflowTimeout : 300000,
         gpuVendor: config.gpuVendor !== undefined ? config.gpuVendor : 'Google Inc. (NVIDIA)',
         gpuRenderer: config.gpuRenderer !== undefined ? config.gpuRenderer : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
         viewport: {
@@ -73,6 +75,7 @@ export function WorkflowConfigModal({
       noMedia: localConfig.noMedia,
       debug: localConfig.debug,
       humanize: localConfig.humanize !== false,
+      workflowTimeout: localConfig.workflowTimeout ? Number(localConfig.workflowTimeout) : undefined,
       gpuVendor: localConfig.gpuVendor?.trim() || undefined,
       gpuRenderer: localConfig.gpuRenderer?.trim() || undefined,
       viewport: {
@@ -192,6 +195,61 @@ export function WorkflowConfigModal({
               checked={localConfig.debug !== false}
               onCheckedChange={(val) => setLocalConfig((prev) => ({ ...prev, debug: val }))}
             />
+          </div>
+        </div>
+
+        {/* Workflow Execution Timeout */}
+        <div className="rounded-lg border border-border/70 p-3.5 space-y-2.5 bg-muted/20">
+          <div className="flex items-center justify-between">
+            <label className="font-semibold text-foreground flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-primary" /> Execution Timeout (workflowTimeout)
+            </label>
+            <span className="text-[10px] text-muted-foreground font-mono">
+              {localConfig.workflowTimeout ? `${Math.round(localConfig.workflowTimeout / 1000)}s (${(localConfig.workflowTimeout / 60000).toFixed(1)}m)` : 'unlimited'}
+            </span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Maximum total duration before the workflow is forcefully aborted and browser is closed.
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              value={localConfig.workflowTimeout ?? 300000}
+              onChange={(e) => setLocalConfig((prev) => ({ ...prev, workflowTimeout: Number(e.target.value) }))}
+              placeholder="300000"
+              className="h-8 text-xs font-mono"
+            />
+            <span className="text-xs text-muted-foreground font-mono shrink-0">ms</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            <button
+              type="button"
+              onClick={() => setLocalConfig((prev) => ({ ...prev, workflowTimeout: 60000 }))}
+              className="px-2 py-0.5 rounded text-[10px] bg-background border border-border/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              1 min (60s)
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocalConfig((prev) => ({ ...prev, workflowTimeout: 300000 }))}
+              className="px-2 py-0.5 rounded text-[10px] bg-background border border-border/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              5 min (default)
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocalConfig((prev) => ({ ...prev, workflowTimeout: 600000 }))}
+              className="px-2 py-0.5 rounded text-[10px] bg-background border border-border/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              10 min (600s)
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocalConfig((prev) => ({ ...prev, workflowTimeout: 1800000 }))}
+              className="px-2 py-0.5 rounded text-[10px] bg-background border border-border/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              30 min (1800s)
+            </button>
           </div>
         </div>
 

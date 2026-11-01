@@ -72,6 +72,7 @@ export interface WorkflowConfig {
   humanize?: boolean;
   gpuVendor?: string;
   gpuRenderer?: string;
+  workflowTimeout?: number;
   viewport?: { width: number; height: number };
   userAgent?: string;
   proxy?: {

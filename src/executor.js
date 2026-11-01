@@ -204,8 +204,33 @@ async function executeWorkflow(payload) {
       videoHandle = page.video();
     }
 
+    // ── Global Workflow Timeout ──────────────────────────────────────
+    const maxWorkflowTime = typeof browserConfig.workflowTimeout === 'number'
+      ? browserConfig.workflowTimeout
+      : config.workflowTimeout;
+
+    const deadline = maxWorkflowTime > 0 ? Date.now() + maxWorkflowTime : 0;
+
+    let timeoutId = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      if (maxWorkflowTime > 0) {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Workflow execution timed out after ${maxWorkflowTime}ms (limit: ${Math.round(maxWorkflowTime / 1000)}s)`));
+        }, maxWorkflowTime);
+        if (timeoutId.unref) timeoutId.unref();
+      }
+    });
+
     // ── Execute workflow steps recursively ──────────────────────────
-    const execResult = await executeSteps(workflow, page, context, variables, results, 0, browserConfig);
+    let execResult;
+    try {
+      execResult = await Promise.race([
+        executeSteps(workflow, page, context, variables, results, 0, browserConfig, deadline, maxWorkflowTime),
+        timeoutPromise,
+      ]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
     
     // Close context to finalize video writing
     let recordingInfo = null;
@@ -271,10 +296,11 @@ async function executeWorkflow(payload) {
         if (key.startsWith('_')) delete finalVars[key];
       }
     }
+    const isTimeout = err.message && err.message.includes('timed out after');
     const res = {
       success: false,
       variables: finalVars,
-      error: `Unexpected error: ${err.message}`,
+      error: isTimeout ? err.message : `Unexpected error: ${err.message}`,
       failedAtIndex: results.length,
     };
     if (recordingInfo) res.recording = recordingInfo;
@@ -311,12 +337,20 @@ async function evaluateCondition(condition, page, step, vars) {
 /**
  * Execute an array of steps.
  */
-async function executeSteps(steps, page, context, variables, results, startIndex, browserConfig = {}) {
+async function executeSteps(steps, page, context, variables, results, startIndex, browserConfig = {}, deadline = 0, maxWorkflowTime = 0) {
   for (let i = 0; i < steps.length; i++) {
+    if (deadline && Date.now() > deadline) {
+      return {
+        success: false,
+        error: `Workflow execution timed out after ${maxWorkflowTime}ms (limit: ${Math.round(maxWorkflowTime / 1000)}s)`,
+        failedAtIndex: startIndex + i,
+      };
+    }
+
     const step = steps[i];
     const globalIndex = startIndex + i;
     
-    const stepResult = await executeAction(page, context, step, globalIndex, variables, results, browserConfig);
+    const stepResult = await executeAction(page, context, step, globalIndex, variables, results, browserConfig, deadline, maxWorkflowTime);
     
     if (stepResult && stepResult.error) {
       return { success: false, error: stepResult.error, failedAtIndex: globalIndex };
@@ -328,7 +362,7 @@ async function executeSteps(steps, page, context, variables, results, startIndex
 /**
  * Execute a single workflow action.
  */
-async function executeAction(page, context, rawStep, index, variables, results, browserConfig = {}) {
+async function executeAction(page, context, rawStep, index, variables, results, browserConfig = {}, deadline = 0, maxWorkflowTime = 0) {
   const step = interpolateStep(rawStep, variables);
   const { action, selector, value } = step;
   const timeout = config.actionTimeout;
@@ -367,7 +401,7 @@ async function executeAction(page, context, rawStep, index, variables, results, 
         
         const branch = isTrue ? step.workflow : step.else;
         if (branch && branch.length > 0) {
-           const subRes = await executeSteps(branch, page, context, variables, results, index + 1, browserConfig);
+           const subRes = await executeSteps(branch, page, context, variables, results, index + 1, browserConfig, deadline, maxWorkflowTime);
            if (!subRes.success) return { error: subRes.error };
         }
         break;
@@ -379,6 +413,9 @@ async function executeAction(page, context, rawStep, index, variables, results, 
         results.push({ action, index, data: { loop: 'started' } });
         
         while (iterations < max) {
+          if (deadline && Date.now() > deadline) {
+            return { error: `Workflow execution timed out after ${maxWorkflowTime}ms (limit: ${Math.round(maxWorkflowTime / 1000)}s)` };
+          }
           if (step.count !== undefined) {
              if (iterations >= step.count) break;
           } else if (step.condition) {
@@ -389,7 +426,7 @@ async function executeAction(page, context, rawStep, index, variables, results, 
           }
           
           variables['_index'] = iterations;
-          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (iterations * step.workflow.length), browserConfig);
+          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (iterations * step.workflow.length), browserConfig, deadline, maxWorkflowTime);
           if (!subRes.success) return { error: subRes.error };
           iterations++;
         }
@@ -405,10 +442,13 @@ async function executeAction(page, context, rawStep, index, variables, results, 
         results.push({ action, index, data: { loopElements: 'started', found: elementsCount, limit } });
         
         for (let i = 0; i < limit; i++) {
+          if (deadline && Date.now() > deadline) {
+            return { error: `Workflow execution timed out after ${maxWorkflowTime}ms (limit: ${Math.round(maxWorkflowTime / 1000)}s)` };
+          }
           variables['_index'] = i;
           variables['_selector'] = `${selector} >> nth=${i}`;
           
-          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (i * step.workflow.length), browserConfig);
+          const subRes = await executeSteps(step.workflow, page, context, variables, results, index + 1 + (i * step.workflow.length), browserConfig, deadline, maxWorkflowTime);
           if (!subRes.success) return { error: subRes.error };
         }
         

@@ -110,6 +110,7 @@ npm run dev
     "noMedia": false,
     "debug": true,
     "humanize": true,
+    "workflowTimeout": 300000,
     "gpuVendor": "Google Inc. (NVIDIA)",
     "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
     "viewport": { "width": 1280, "height": 720 },

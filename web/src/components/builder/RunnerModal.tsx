@@ -42,6 +42,7 @@ export function RunnerModal({ open, onClose, workflow, onOpenVnc, initialConfig 
   const [humanize, setHumanize] = useState(true);
   const [gpuVendor, setGpuVendor] = useState('Google Inc. (NVIDIA)');
   const [gpuRenderer, setGpuRenderer] = useState('ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)');
+  const [workflowTimeout, setWorkflowTimeout] = useState<number>(300000);
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [viewportHeight, setViewportHeight] = useState(720);
   const [userAgent, setUserAgent] = useState('');
@@ -70,6 +71,7 @@ export function RunnerModal({ open, onClose, workflow, onOpenVnc, initialConfig 
         setHumanize(initialConfig.humanize !== false);
         setGpuVendor(initialConfig.gpuVendor !== undefined ? initialConfig.gpuVendor : 'Google Inc. (NVIDIA)');
         setGpuRenderer(initialConfig.gpuRenderer !== undefined ? initialConfig.gpuRenderer : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)');
+        setWorkflowTimeout(initialConfig.workflowTimeout !== undefined ? initialConfig.workflowTimeout : 300000);
         setViewportWidth(initialConfig.viewport?.width || 1280);
         setViewportHeight(initialConfig.viewport?.height || 720);
         setUserAgent(initialConfig.userAgent || '');
@@ -108,6 +110,7 @@ export function RunnerModal({ open, onClose, workflow, onOpenVnc, initialConfig 
         noMedia,
         debug,
         humanize,
+        workflowTimeout: workflowTimeout ? Number(workflowTimeout) : undefined,
         gpuVendor: gpuVendor.trim() || undefined,
         gpuRenderer: gpuRenderer.trim() || undefined,
         viewport: { width: Number(viewportWidth) || 1280, height: Number(viewportHeight) || 720 },
@@ -261,6 +264,50 @@ export function RunnerModal({ open, onClose, workflow, onOpenVnc, initialConfig 
                     <p className="text-[10px] text-muted-foreground">Bézier curve mouse trajectory and randomized 50–150ms typing delay</p>
                   </div>
                   <Switch checked={humanize} onCheckedChange={(v) => setHumanize(v)} />
+                </div>
+              </div>
+
+              <div className="p-2 rounded border border-border/50 bg-background/50 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-primary" /> Max Workflow Timeout (workflowTimeout)
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {workflowTimeout ? `${Math.round(workflowTimeout / 1000)}s` : 'unlimited'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={workflowTimeout}
+                    onChange={(e) => setWorkflowTimeout(Number(e.target.value))}
+                    placeholder="300000"
+                    className="h-7 text-xs font-mono"
+                  />
+                  <span className="text-[10px] text-muted-foreground font-mono shrink-0">ms</span>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setWorkflowTimeout(60000)}
+                      className="px-1.5 py-0.5 rounded text-[9px] bg-muted hover:bg-muted/80 text-muted-foreground"
+                    >
+                      1m
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWorkflowTimeout(300000)}
+                      className="px-1.5 py-0.5 rounded text-[9px] bg-muted hover:bg-muted/80 text-muted-foreground"
+                    >
+                      5m
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWorkflowTimeout(600000)}
+                      className="px-1.5 py-0.5 rounded text-[9px] bg-muted hover:bg-muted/80 text-muted-foreground"
+                    >
+                      10m
+                    </button>
+                  </div>
                 </div>
               </div>
 
