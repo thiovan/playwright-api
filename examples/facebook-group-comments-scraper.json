@@ -1,0 +1,98 @@
+{
+  "config": {
+    "headless": false,
+    "recordVideo": false,
+    "noMedia": false,
+    "debug": false,
+    "humanize": true,
+    "workflowTimeout": 300000
+  },
+  "workflow": [
+    {
+      "action": "goto",
+      "value": "https://www.facebook.com/"
+    },
+    {
+      "action": "cookie-set",
+      "name": "c_user",
+      "value": "CHANGE_WITH_YOUR_FB_C_USER"
+    },
+    {
+      "action": "cookie-set",
+      "name": "xs",
+      "value": "CHANGE_WITH_YOUR_FB_XS"
+    },
+    {
+      "action": "goto",
+      "value": "https://www.facebook.com/groups/xxxxxx/posts/yyyyyy/"
+    },
+    {
+      "action": "wait",
+      "value": 5000
+    },
+    {
+      "action": "mousewheel",
+      "dx": 0,
+      "dy": 600
+    },
+    {
+      "action": "wait",
+      "value": 2000
+    },
+    {
+      "action": "if",
+      "condition": "selector-exists",
+      "selector": "div[role='button']:is(:has-text('View more comments'), :has-text('View previous comments'), :has-text('Lihat komentar lainnya'), :has-text('Lihat komentar sebelumnya'))",
+      "workflow": [
+        {
+          "action": "click",
+          "selector": "div[role='button']:is(:has-text('View more comments'), :has-text('View previous comments'), :has-text('Lihat komentar lainnya'), :has-text('Lihat komentar sebelumnya')) >> nth=0"
+        },
+        {
+          "action": "wait",
+          "value": 3000
+        }
+      ]
+    },
+    {
+      "action": "if",
+      "condition": "selector-exists",
+      "selector": "div[role='article']:is([aria-label*='Comment' i], [aria-label*='Komentar' i])",
+      "workflow": [
+        {
+          "action": "loop-elements",
+          "selector": "div[role='article']:is([aria-label*='Comment' i], [aria-label*='Komentar' i])",
+          "max": 20,
+          "workflow": [
+            {
+              "action": "get-text",
+              "selector": "{{_selector}} >> a[role='link'] span >> nth=0",
+              "name": "username"
+            },
+            {
+              "action": "get-attribute",
+              "selector": "{{_selector}} >> a[role='link'] >> nth=0",
+              "value": "href",
+              "name": "user_profile"
+            },
+            {
+              "action": "get-text",
+              "selector": "{{_selector}} >> div[dir='auto'] >> nth=0",
+              "name": "comment"
+            },
+            {
+              "action": "var-set",
+              "name": "data",
+              "push": true,
+              "value": {
+                "username": "{{username}}",
+                "user_profile": "{{user_profile}}",
+                "comment": "{{comment}}"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
