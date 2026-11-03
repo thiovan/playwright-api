@@ -236,8 +236,8 @@ curl -X POST http://localhost:3000/api/v1/sync \
 | `RECORDINGS_TTL` | `86400` | Time to keep recordings before cleanup (seconds) |
 | `VNC_HOST` | `localhost` | noVNC host interface |
 | `VNC_PORT` | `8080` | noVNC web streaming port |
-| `DASHBOARD_DEFAULT_USERNAME` | `admin` | Initial admin username |
-| `DASHBOARD_DEFAULT_PASSWORD` | `admin` | Initial admin password |
+| `DASHBOARD_ADMIN_USER` | `admin` | Initial admin username |
+| `DASHBOARD_ADMIN_PASS` | `admin` | Initial admin password |
 
 ---
 

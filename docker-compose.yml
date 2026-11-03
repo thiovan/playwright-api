@@ -1,8 +1,6 @@
 services:
   redis:
     image: redis:alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis-data:/data
     restart: unless-stopped
@@ -17,35 +15,38 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
-      - "8080:8080"
+      - "${PORT:-3000}:${PORT:-3000}"
+      - "${VNC_PORT:-8080}:${VNC_PORT:-8080}"
     volumes:
       - ./recordings:/app/recordings
     environment:
-      - PORT=3000
-      - NODE_ENV=production
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - REDIS_TLS=false
-      - CONCURRENCY=3
-      - ACTION_TIMEOUT=60000
-      - WORKFLOW_TIMEOUT=300000
-      - WEBHOOK_TIMEOUT=30000
-      - HISTORY_TTL=86400
-      - HISTORY_MAX_ITEMS=1000
-      - VNC_HOST=localhost
-      - VNC_PORT=8080
-      - DISPLAY=:99
-      - RECORDINGS_DIR=/app/recordings
-      - RECORDINGS_TTL=86400
-      - DASHBOARD_DEFAULT_USERNAME=admin
-      - DASHBOARD_DEFAULT_PASSWORD=admin
+      - PORT=${PORT:-3000}
+      - NODE_ENV=${NODE_ENV:-production}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_TLS=${REDIS_TLS:-false}
+      - CONCURRENCY=${CONCURRENCY:-3}
+      - ACTION_TIMEOUT=${ACTION_TIMEOUT:-60000}
+      - WORKFLOW_TIMEOUT=${WORKFLOW_TIMEOUT:-300000}
+      - WEBHOOK_TIMEOUT=${WEBHOOK_TIMEOUT:-30000}
+      - LOOP_MAX_ITERATIONS=${LOOP_MAX_ITERATIONS:-1000}
+      - QUEUE_NAME=${QUEUE_NAME:-playwright-workflows}
+      - HISTORY_TTL=${HISTORY_TTL:-86400}
+      - HISTORY_MAX_ITEMS=${HISTORY_MAX_ITEMS:-1000}
+      - VNC_HOST=${VNC_HOST:-localhost}
+      - VNC_PORT=${VNC_PORT:-8080}
+      - DISPLAY=${DISPLAY:-:99}
+      - RECORDINGS_DIR=${RECORDINGS_DIR:-/app/recordings}
+      - RECORDINGS_TTL=${RECORDINGS_TTL:-86400}
+      - DASHBOARD_ADMIN_USER=${DASHBOARD_ADMIN_USER:-admin}
+      - DASHBOARD_ADMIN_PASS=${DASHBOARD_ADMIN_PASS:-admin}
+      - SESSION_TTL=${SESSION_TTL:-604800}
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/v1/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/v1/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 3
