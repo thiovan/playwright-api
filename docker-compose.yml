@@ -1,5 +1,6 @@
 services:
   redis:
+    container_name: playwright-api-redis
     image: redis:alpine
     volumes:
       - redis-data:/data
@@ -11,6 +12,7 @@ services:
       retries: 5
 
   app:
+    container_name: playwright-api-app
     build:
       context: .
       dockerfile: Dockerfile
